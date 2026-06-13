@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>구글 지도 좌표 추출기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.15);
+  --text: #e8eaf0;
+  --muted: #7c82a0;
+  --accent: #4f7fff;
+  --accent-glow: rgba(79,127,255,0.18);
+  --accent-light: #8aaeff;
+  --success: #2ecc71;
+  --success-bg: rgba(46,204,113,0.1);
+  --danger: #e74c3c;
+  --danger-bg: rgba(231,76,60,0.1);
+  --info-bg: rgba(79,127,255,0.1);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Inter', sans-serif;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem 4rem;
+}
+
+/* ── 헤더 ── */
+header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+.logo-icon {
+  width: 40px; height: 40px;
+  background: var(--accent);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+.logo-icon svg { width: 22px; height: 22px; fill: white; }
+h1 {
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.subtitle {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+}
+.badge-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+.badge {
+  font-size: 11px;
+  font-family: var(--mono);
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* ── 메인 카드 ── */
+.main {
+  width: 100%;
+  max-width: 640px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px 14px;
+  resize: vertical;
+  min-height: 90px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+textarea::placeholder { color: var(--muted); opacity: 0.6; }
+textarea:focus { border-color: var(--accent); }
+
+.apikey-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.apikey-input::placeholder { color: var(--muted); opacity: 0.6; }
+.apikey-input:focus { border-color: var(--accent); }
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+button {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+button:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.btn-primary:hover { background: #3d6eee; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border2);
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
+
+/* ── 상태 메시지 ── */
+.status {
+  font-size: 13px;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  margin-top: 12px;
+  display: none;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.6;
+}
+.status.show { display: flex; }
+.status.ok { background: var(--success-bg); color: var(--success); border: 1px solid rgba(46,204,113,0.2); }
+.status.err { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(231,76,60,0.2); }
+.status.info { background: var(--info-bg); color: var(--accent-light); border: 1px solid rgba(79,127,255,0.2); }
+.status.loading { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+/* ── 결과 카드 ── */
+#resultArea { display: none; }
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 1rem;
+}
+
+.metric {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+.metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+.metric-value {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--accent-light);
+  letter-spacing: -0.01em;
+}
+
+.method-row {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--mono);
+  padding: 10px 14px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-left: 3px solid var(--accent);
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.map-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.map-link {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  text-decoration: none;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.map-link:hover { color: var(--text); border-color: var(--accent); background: var(--info-bg); }
+.map-link svg { width: 12px; height: 12px; }
+
+/* ── 구분선 ── */
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+
+/* ── 안내 섹션 ── */
+.guide {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+}
+.guide-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+}
+.guide-item {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.guide-item:last-child { margin-bottom: 0; }
+.guide-tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--accent-light);
+  white-space: nowrap;
+  height: fit-content;
+  margin-top: 1px;
+}
+.guide-desc { color: var(--muted); }
+
+/* ── 스피너 ── */
+.spinner {
+  width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--muted);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 토스트 ── */
+#toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-size: 13px;
+  padding: 10px 20px;
+  border-radius: 20px;
+  opacity: 0;
+  transition: all 0.25s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── 반응형 ── */
+@media (max-width: 480px) {
+  h1 { font-size: 1.3rem; }
+  .result-grid { grid-template-columns: 1fr; }
+  .metric-value { font-size: 15px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+      </svg>
+    </div>
+    <h1>좌표 추출기</h1>
+  </div>
+  <p class="subtitle">구글 지도 URL에서 위도·경도를 추출합니다</p>
+  <div class="badge-row">
+    <span class="badge">일반 URL</span>
+    <span class="badge">Plus Code</span>
+    <span class="badge">단축 URL</span>
+    <span class="badge">단축코드</span>
+  </div>
+</header>
+
+<main class="main">
+  <!-- 입력 카드 -->
+  <div class="card">
+    <div class="field-label">구글 지도 URL</div>
+    <textarea id="urlInput" placeholder="https://maps.app.goo.gl/xxxxx
+https://www.google.com/maps/search/C2MC%2BM36+과천시+경기도?...
+https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
+    <div class="btn-row">
+      <button class="btn-primary" id="extractBtn" onclick="handleExtract()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        좌표 추출
+      </button>
+      <button class="btn-ghost" onclick="clearAll()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        초기화
+      </button>
+    </div>
+    <div class="status" id="statusMsg"></div>
+
+    <div class="apikey-row">
+      <div class="field-label" style="margin-top:1rem">Worker 주소 <span style="text-transform:none;font-weight:400">(단축 URL 펼치기 · 권장)</span></div>
+      <input type="text" id="workerUrl" class="apikey-input" placeholder="https://xxx.workers.dev" autocomplete="off">
+      <div class="field-label" style="margin-top:0.9rem">Anthropic API 키 <span style="text-transform:none;font-weight:400">(선택 · AI 검색 폴백용)</span></div>
+      <input type="password" id="apiKey" class="apikey-input" placeholder="sk-ant-..." autocomplete="off">
+    </div>
+  </div>
+
+  <!-- 결과 카드 -->
+  <div id="resultArea">
+    <div class="card">
+      <div class="field-label">추출 결과</div>
+      <div class="result-grid">
+        <div class="metric">
+          <div class="metric-label">위도 · Latitude</div>
+          <div class="metric-value" id="lat">—</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">경도 · Longitude</div>
+          <div class="metric-value" id="lng">—</div>
+        </div>
+      </div>
+      <div class="method-row" id="methodRow"></div>
+      <div class="action-row">
+        <button class="btn-primary" onclick="copyCoords()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          좌표 복사
+        </button>
+        <button class="btn-ghost" onclick="copyJson()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+          JSON 복사
+        </button>
+      </div>
+      <div class="map-links" id="mapLinks"></div>
+    </div>
+  </div>
+
+  <!-- 지원 형식 안내 -->
+  <div class="guide">
+    <div class="guide-title">지원 형식</div>
+    <div class="guide-item">
+      <span class="guide-tag">좌표 URL</span>
+      <span class="guide-desc">@37.56,126.97,14z · q=37.56,126.97 · !3d!4d 형식</span>
+    </div>
+    <div class="guide-item">
+      <span class="guide-tag">Plus Code</span>
+      <span class="guide-desc">C2MC+M36 과천시 — URL 안의 Plus Code를 자동 감지·디코딩</span>
+    </div>
+    <div class="guide-item">
+      <span class="guide-tag">단축 URL</span>
+      <span class="guide-desc">maps.app.goo.gl — Worker로 리다이렉트를 펼쳐 좌표 추출 (API 키 있으면 AI 검색 폴백)</span>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── OLC (Plus Code) 구현 ─────────────────────────────────────────
+const OLC = (() => {
+  const ALPHA = '23456789CFGHJMPQRVWX';
+  const LAT_MAX = 90, LNG_MAX = 180;
+  const PAIR_LEN = 10, SEP_POS = 8;
+  const PAIR_RES = [20.0, 1.0, 0.05, 0.0025, 0.000125];
+  const GRID_ROWS = 5, GRID_COLS = 4, GRID_SIZE = 0.000125;
+
+  const clipLat = l => Math.min(90, Math.max(-90, l));
+  const normLng = l => { while(l<-180)l+=360; while(l>=180)l-=360; return l; };
+
+  function isFull(code) {
+    code = code.toUpperCase();
+    const sep = code.indexOf('+');
+    if (sep !== SEP_POS) return false;
+    return ![...code.replace('+','').replace(/0+$/,'')].some(c => !ALPHA.includes(c));
+  }
+  function isShort(code) {
+    code = code.toUpperCase();
+    const sep = code.indexOf('+');
+    return sep >= 0 && sep < SEP_POS;
+  }
+
+  function decodePairsSeq(code, offset) {
+    let i = 0, value = 0;
+    while (i*2+offset < code.length) { value += ALPHA.indexOf(code[i*2+offset]) * PAIR_RES[i]; i++; }
+    return [value, value + PAIR_RES[i-1]];
+  }
+  function decodePairs(code) {
+    const lat = decodePairsSeq(code, 0), lng = decodePairsSeq(code, 1);
+    return { latLo:lat[0]-LAT_MAX, latHi:lat[1]-LAT_MAX, lngLo:lng[0]-LNG_MAX, lngHi:lng[1]-LNG_MAX,
+             latCenter:(lat[0]+lat[1])/2-LAT_MAX, lngCenter:(lng[0]+lng[1])/2-LNG_MAX, codeLen:code.length };
+  }
+  function decodeGrid(code) {
+    let latLo=0, lngLo=0, latPV=GRID_SIZE, lngPV=GRID_SIZE;
+    for (let i=0;i<code.length;i++) {
+      const idx=ALPHA.indexOf(code[i]), row=Math.floor(idx/GRID_COLS), col=idx%GRID_COLS;
+      latPV/=GRID_ROWS; lngPV/=GRID_COLS;
+      latLo+=row*latPV; lngLo+=col*lngPV;
+    }
+    return { latLo, lngLo, latHi:latLo+latPV, lngHi:lngLo+lngPV, codeLen:code.length };
+  }
+  function decode(code) {
+    const clean = code.replace('+','').replace(/0+$/,'').toUpperCase();
+    const pairs = decodePairs(clean.slice(0, PAIR_LEN));
+    if (clean.length <= PAIR_LEN) return pairs;
+    const grid = decodeGrid(clean.slice(PAIR_LEN));
+    return { latLo:pairs.latLo+grid.latLo, lngLo:pairs.lngLo+grid.lngLo,
+             latHi:pairs.latLo+grid.latHi, lngHi:pairs.lngLo+grid.lngHi,
+             latCenter:pairs.latLo+(grid.latLo+grid.latHi)/2,
+             lngCenter:pairs.lngLo+(grid.lngLo+grid.lngHi)/2,
+             codeLen:pairs.codeLen+grid.codeLen };
+  }
+  function encode(lat, lng, codeLen) {
+    codeLen = codeLen || PAIR_LEN;
+    lat = clipLat(lat); lng = normLng(lng);
+    if (lat === LAT_MAX) lat -= 0.000000001;
+    let latVal=lat+LAT_MAX, lngVal=lng+LNG_MAX, code='';
+    for (let i=0;i<Math.ceil(codeLen/2);i++) {
+      const res=PAIR_RES[i];
+      code += ALPHA[Math.floor(latVal/res)] + ALPHA[Math.floor(lngVal/res)];
+      latVal%=res; lngVal%=res;
+    }
+    return code.slice(0,SEP_POS)+'+'+code.slice(SEP_POS);
+  }
+  function recoverNearest(shortCode, refLat, refLng) {
+    shortCode = shortCode.toUpperCase();
+    if (isFull(shortCode)) return shortCode;
+    refLat = clipLat(refLat); refLng = normLng(refLng);
+    const paddingLen = SEP_POS - shortCode.indexOf('+');
+    const resolution = Math.pow(20, 2 - paddingLen/2);
+    const areaToEdge = resolution/2;
+    const roundedLat = Math.floor(refLat/resolution)*resolution;
+    const roundedLng = Math.floor(refLng/resolution)*resolution;
+    const prefix = encode(roundedLat, roundedLng).slice(0, paddingLen);
+    const codeArea = decode(prefix + shortCode);
+    let lat=codeArea.latCenter, lng2=codeArea.lngCenter;
+    if (lat-refLat > areaToEdge) lat-=resolution;
+    else if (refLat-lat > areaToEdge) lat+=resolution;
+    if (lng2-refLng > areaToEdge) lng2-=resolution;
+    else if (refLng-lng2 > areaToEdge) lng2+=resolution;
+    const codeLen = shortCode.replace('+','').length + paddingLen;
+    return encode(lat, lng2, Math.min(codeLen, PAIR_LEN));
+  }
+  function extractFromText(text) {
+    const re = /\b([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,6})\b/gi;
+    const m = text.match(re);
+    return m ? [...new Set(m.map(x=>x.toUpperCase()))] : [];
+  }
+  return { decode, encode, recoverNearest, isShort, isFull, extractFromText };
+})();
+
+// ── 한국 주요 도시 ────────────────────────────────────────────────
+const CITIES = {
+  '서울':      {lat:37.5665,lng:126.9780}, '부산':{lat:35.1796,lng:129.0756},
+  '대구':      {lat:35.8714,lng:128.6014}, '인천':{lat:37.4563,lng:126.7052},
+  '광주':      {lat:35.1595,lng:126.8526}, '대전':{lat:36.3504,lng:127.3845},
+  '울산':      {lat:35.5384,lng:129.3114}, '세종':{lat:36.4801,lng:127.2890},
+  '수원':      {lat:37.2636,lng:127.0286}, '성남':{lat:37.4449,lng:127.1388},
+  '고양':      {lat:37.6584,lng:126.8320}, '용인':{lat:37.2411,lng:127.1776},
+  '부천':      {lat:37.5034,lng:126.7660}, '안산':{lat:37.3219,lng:126.8309},
+  '남양주':    {lat:37.6360,lng:127.2165}, '화성':{lat:37.1995,lng:126.8312},
+  '안양':      {lat:37.3943,lng:126.9568}, '평택':{lat:36.9921,lng:127.1129},
+  '시흥':      {lat:37.3800,lng:126.8031}, '파주':{lat:37.7601,lng:126.7800},
+  '의정부':    {lat:37.7381,lng:127.0476}, '김포':{lat:37.6154,lng:126.7159},
+  '광명':      {lat:37.4784,lng:126.8643}, '하남':{lat:37.5396,lng:127.2146},
+  '군포':      {lat:37.3608,lng:126.9352}, '오산':{lat:37.1498,lng:127.0770},
+  '이천':      {lat:37.2723,lng:127.4345}, '안성':{lat:37.0078,lng:127.2798},
+  '의왕':      {lat:37.3447,lng:126.9688}, '과천':{lat:37.4292,lng:126.9878},
+  '구리':      {lat:37.5998,lng:127.1301}, '포천':{lat:37.8946,lng:127.2006},
+  '양주':      {lat:37.7851,lng:127.0458}, '가평':{lat:37.8314,lng:127.5108},
+  '연천':      {lat:38.0963,lng:127.0750}, '동두천':{lat:37.9038,lng:127.0608},
+  '춘천':      {lat:37.8813,lng:127.7298}, '원주':{lat:37.3422,lng:127.9203},
+  '강릉':      {lat:37.7519,lng:128.8761}, '청주':{lat:36.6424,lng:127.4890},
+  '천안':      {lat:36.8151,lng:127.1139}, '공주':{lat:36.4465,lng:127.1190},
+  '전주':      {lat:35.8242,lng:127.1480}, '여수':{lat:34.7604,lng:127.6622},
+  '순천':      {lat:34.9506,lng:127.4872}, '목포':{lat:34.8118,lng:126.3922},
+  '포항':      {lat:36.0190,lng:129.3435}, '경주':{lat:35.8562,lng:129.2247},
+  '구미':      {lat:36.1197,lng:128.3446}, '창원':{lat:35.2279,lng:128.6811},
+  '진주':      {lat:35.1799,lng:128.1076}, '제주':{lat:33.4996,lng:126.5312},
+};
+
+function getRefCoords(text) {
+  for (const [city, coords] of Object.entries(CITIES)) {
+    if (text.includes(city)) return {...coords, city};
+  }
+  return {lat:37.5665, lng:126.9780, city:'서울(기본값)'};
+}
+
+// ── 좌표 직접 추출 ────────────────────────────────────────────────
+function extractCoords(url) {
+  let u;
+  try { u = decodeURIComponent(url); } catch(e) { u = url; }
+  let m, lat, lng, zoom, pattern;
+  m=u.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(\d+(?:\.\d+)?)z/i); if(m){lat=+m[1];lng=+m[2];zoom=m[3];pattern='@lat,lng,Zz'}
+  if(lat==null){m=u.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);if(m){lat=+m[1];lng=+m[2];pattern='q=lat,lng'}}
+  if(lat==null){m=u.match(/[?&]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);if(m){lat=+m[1];lng=+m[2];pattern='ll=lat,lng'}}
+  if(lat==null){m=u.match(/place\/[^/]*\/@?(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);if(m){lat=+m[1];lng=+m[2];pattern='/place/'}}
+  if(lat==null){m=u.match(/!3d(-?\d+(?:\.\d+)?).*?!4d(-?\d+(?:\.\d+)?)/);if(m){lat=+m[1];lng=+m[2];pattern='!3d!4d'}}
+  if(lat==null){m=u.match(/destination=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);if(m){lat=+m[1];lng=+m[2];pattern='destination'}}
+  if(lat!=null&&lng!=null&&!isNaN(lat)&&!isNaN(lng)&&lat>=-90&&lat<=90&&lng>=-180&&lng<=180)
+    return {lat,lng,zoom,pattern};
+  return null;
+}
+
+// ── UI 헬퍼 ──────────────────────────────────────────────────────
+function setStatus(msg, type) {
+  const el = document.getElementById('statusMsg');
+  el.className = 'status show ' + type;
+  if (type === 'loading') {
+    el.innerHTML = '<div class="spinner"></div><span>' + msg + '</span>';
+  } else {
+    el.textContent = msg;
+  }
+}
+function hideStatus() {
+  document.getElementById('statusMsg').className = 'status';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function showResult(lat, lng, method, info) {
+  document.getElementById('lat').textContent = lat.toFixed(6);
+  document.getElementById('lng').textContent = lng.toFixed(6);
+  document.getElementById('methodRow').textContent = info || method;
+
+  const links = document.getElementById('mapLinks');
+  links.innerHTML = `
+    <a class="map-link" href="https://map.naver.com/?lat=${lat}&lng=${lng}&level=14" target="_blank">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+      네이버 지도
+    </a>
+    <a class="map-link" href="https://map.kakao.com/link/map/${lat},${lng}" target="_blank">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+      카카오맵
+    </a>
+    <a class="map-link" href="https://www.google.com/maps?q=${lat},${lng}" target="_blank">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+      구글 지도
+    </a>`;
+
+  document.getElementById('resultArea').style.display = 'block';
+}
+
+// ── 통합 추출: 직접 좌표 파싱 + Plus Code 디코딩 ──────────────────
+// 원본 입력에도, Worker가 펼친 최종 URL/본문에도 동일하게 적용한다.
+function tryExtractAll(text) {
+  if (!text) return null;
+
+  // 1) 직접 좌표 파싱 (@lat,lng · q= · !3d!4d 등)
+  const direct = extractCoords(text);
+  if (direct) {
+    return { lat: direct.lat, lng: direct.lng, method: '직접 파싱',
+      info: `직접 파싱 (${direct.pattern})${direct.zoom ? ' · 줌 ' + direct.zoom : ''}` };
+  }
+
+  // 2) Plus Code 감지·디코딩
+  let decoded;
+  try { decoded = decodeURIComponent(text); } catch(e) { decoded = text; }
+  const plusCodes = OLC.extractFromText(decoded);
+  if (plusCodes.length > 0) {
+    const plusCode = plusCodes[0];
+    const ref = getRefCoords(decoded);
+    let lat, lng, info;
+    if (OLC.isFull(plusCode)) {
+      const r = OLC.decode(plusCode);
+      lat = r.latCenter; lng = r.lngCenter;
+      info = `Plus Code 직접 디코딩 · ${plusCode}`;
+    } else {
+      const fullCode = OLC.recoverNearest(plusCode, ref.lat, ref.lng);
+      const r = OLC.decode(fullCode);
+      lat = r.latCenter; lng = r.lngCenter;
+      info = `Plus Code 복원 · ${plusCode} → ${fullCode} (기준: ${ref.city})`;
+    }
+    if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+      return { lat, lng, method: 'Plus Code', info };
+    }
+  }
+  return null;
+}
+
+// ── 메인 ─────────────────────────────────────────────────────────
+async function handleExtract() {
+  const raw = document.getElementById('urlInput').value.trim();
+  if (!raw) { setStatus('URL을 입력해 주세요.', 'info'); return; }
+
+  document.getElementById('resultArea').style.display = 'none';
+  hideStatus();
+
+  // 1·2. 원본 입력에서 직접 좌표·Plus Code 추출
+  const local = tryExtractAll(raw);
+  if (local) {
+    showResult(local.lat, local.lng, local.method, '추출 방법: ' + local.info);
+    setStatus('좌표 추출 성공 (' + local.method + ')', 'ok');
+    return;
+  }
+
+  // 3. 단축 URL → Worker로 리다이렉트 펼친 뒤, 펼친 URL에서 다시 추출
+  const workerUrl = document.getElementById('workerUrl').value.trim();
+  if (workerUrl) {
+    setStatus('단축 URL을 펼치는 중입니다...', 'loading');
+    document.getElementById('extractBtn').disabled = true;
+    try {
+      const res = await fetch(workerUrl.replace(/\/$/, '') + '/?url=' + encodeURIComponent(raw));
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || ('Worker 오류 ' + res.status));
+
+      // 펼쳐진 최종 URL에서 추출(좌표+Plus Code), 실패 시 페이지 본문에서 재시도
+      let r = tryExtractAll(data.finalUrl), via = '최종 URL';
+      if (!r && data.body) { r = tryExtractAll(data.body); via = '페이지 본문'; }
+      if (r) {
+        showResult(r.lat, r.lng, '단축 URL 펼치기',
+          `추출 방법: 단축 URL 펼치기 (Worker · ${via})\n${r.info}` +
+          (data.finalUrl ? '\n최종 URL: ' + data.finalUrl : ''));
+        setStatus('좌표 추출 성공 (단축 URL 펼치기)', 'ok');
+        return;
+      }
+      setStatus('단축 URL은 펼쳤지만 좌표를 찾지 못했습니다. AI 검색으로 재시도하려면 API 키를 입력하세요.', 'info');
+    } catch(e) {
+      setStatus('Worker 펼치기 실패: ' + e.message, 'err');
+    } finally {
+      document.getElementById('extractBtn').disabled = false;
+    }
+    // 여기 도달 = Worker로 좌표를 못 찾음. API 키가 있으면 아래 AI 검색으로 계속 시도.
+  }
+
+  // 4. 단축 URL → AI 웹 검색 (폴백)
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) {
+    if (!workerUrl) setStatus('직접 파싱·Plus Code로 좌표를 찾지 못했습니다.\nWorker 주소를 입력하면 단축 URL을 펼쳐 좌표를 찾습니다.', 'info');
+    return;
+  }
+  setStatus('AI가 URL을 분석 중입니다... (5~15초)', 'loading');
+  document.getElementById('extractBtn').disabled = true;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 512,
+        tools: [{type: 'web_search_20250305', name: 'web_search'}],
+        system: 'Respond ONLY with raw JSON, no markdown:\n{"lat":37.1,"lng":127.2,"method":"how","error":null}\nIf failed: {"lat":null,"lng":null,"error":"reason"}',
+        messages: [{role:'user', content:'Find GPS coordinates for this Google Maps URL: ' + raw}]
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || data.type === 'error') {
+      throw new Error(data.error?.message || ('API 오류 ' + res.status));
+    }
+    if (!Array.isArray(data.content)) throw new Error('응답 형식 오류');
+    for (const b of data.content) {
+      if (b.type !== 'text') continue;
+      const m = b.text.match(/\{[\s\S]*?"lat"[\s\S]*?\}/);
+      if (m) {
+        const r = JSON.parse(m[0]);
+        if (r.lat && r.lng) {
+          showResult(r.lat, r.lng, 'AI 웹 검색', `추출 방법: AI 웹 검색\n${r.method || ''}`);
+          setStatus('좌표 추출 성공 (AI 웹 검색)', 'ok');
+          return;
+        }
+        throw new Error(r.error || '좌표 없음');
+      }
+    }
+    throw new Error('응답 파싱 실패');
+  } catch(e) {
+    setStatus('추출 실패: ' + e.message + '\n브라우저에서 URL을 열어 주소창의 전체 URL을 복사해 주세요.', 'err');
+  } finally {
+    document.getElementById('extractBtn').disabled = false;
+  }
+}
+
+function copyCoords() {
+  const lat = document.getElementById('lat').textContent;
+  const lng = document.getElementById('lng').textContent;
+  if (lat === '—') return;
+  navigator.clipboard.writeText(lat + ', ' + lng).then(() => showToast('좌표 복사됨: ' + lat + ', ' + lng));
+}
+
+function copyJson() {
+  const lat = document.getElementById('lat').textContent;
+  const lng = document.getElementById('lng').textContent;
+  if (lat === '—') return;
+  navigator.clipboard.writeText(JSON.stringify({latitude: +lat, longitude: +lng}, null, 2))
+    .then(() => showToast('JSON 복사됨'));
+}
+
+function clearAll() {
+  document.getElementById('urlInput').value = '';
+  document.getElementById('resultArea').style.display = 'none';
+  hideStatus();
+}
+
+document.getElementById('urlInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleExtract(); }
+});
+
+// ── 설정 저장·복원 (브라우저 localStorage) ────────────────────────
+function persistField(id, key) {
+  const el = document.getElementById(id);
+  try { const saved = localStorage.getItem(key); if (saved) el.value = saved; } catch(e) {}
+  el.addEventListener('input', () => {
+    try { localStorage.setItem(key, el.value.trim()); } catch(e) {}
+  });
+}
+persistField('workerUrl', 'maps_worker_url');
+persistField('apiKey', 'anthropic_api_key');
+</script>
+</body>
+</html>
