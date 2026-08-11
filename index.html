@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>구글 지도 좌표 추출기</title>
+<title>지도 좌표 도구</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -144,6 +144,78 @@ textarea:focus { border-color: var(--accent); }
 }
 .apikey-input::placeholder { color: var(--muted); opacity: 0.6; }
 .apikey-input:focus { border-color: var(--accent); }
+
+/* ── 탭 메뉴 ── */
+.tabbar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 1.75rem;
+}
+.tab-btn {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  padding: 8px 22px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.tab-btn:hover { color: var(--text); background: var(--surface2); }
+.tab-btn.active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+
+/* ── 좌표 입력기 (EXIF) ── */
+.dropzone {
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dropzone:hover, .dropzone.drag {
+  border-color: var(--accent);
+  color: var(--accent-light);
+  background: var(--info-bg);
+}
+.filelist {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.fitem {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.fitem span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fstat { white-space: nowrap; flex-shrink: 0; }
+.fstat.done { color: var(--success); }
+.fstat.skip { color: var(--muted); opacity: 0.7; }
+.fstat.fail { color: var(--danger); }
+.fstat.has { color: var(--accent-light); }
+.opt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 10px;
+  cursor: pointer;
+}
+.opt input { accent-color: var(--accent); }
 
 .btn-row {
   display: flex;
@@ -365,9 +437,9 @@ button:active { transform: scale(0.97); }
         <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
       </svg>
     </div>
-    <h1>좌표 추출기</h1>
+    <h1>지도 좌표 도구</h1>
   </div>
-  <p class="subtitle">구글 지도 URL에서 위도·경도를 추출합니다</p>
+  <p class="subtitle">구글 지도 URL에서 좌표를 추출하고, 사진 EXIF에 GPS를 기록합니다</p>
   <div class="badge-row">
     <span class="badge">일반 URL</span>
     <span class="badge">Plus Code</span>
@@ -376,7 +448,12 @@ button:active { transform: scale(0.97); }
   </div>
 </header>
 
-<main class="main">
+<nav class="tabbar">
+  <button class="tab-btn active" id="tabBtnExtractor" onclick="switchTab('extractor')">좌표 추출기</button>
+  <button class="tab-btn" id="tabBtnWriter" onclick="switchTab('writer')">좌표 입력기 (EXIF)</button>
+</nav>
+
+<main class="main" id="tab-extractor">
   <!-- 입력 카드 -->
   <div class="card">
     <div class="field-label">구글 지도 URL</div>
@@ -427,6 +504,10 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
           JSON 복사
         </button>
+        <button class="btn-ghost" onclick="sendToWriter()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/></svg>
+          사진에 입력
+        </button>
       </div>
       <div class="map-links" id="mapLinks"></div>
     </div>
@@ -450,7 +531,63 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
   </div>
 </main>
 
+<!-- ═══════════ 좌표 입력기 (EXIF GPS) ═══════════ -->
+<main class="main" id="tab-writer" style="display:none">
+  <!-- 좌표 카드 -->
+  <div class="card">
+    <div class="field-label">좌표 (위도, 경도)</div>
+    <input type="text" id="wCoords" class="apikey-input" placeholder="37.429200, 126.987800" autocomplete="off">
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="pullFromExtractor()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+        추출기 결과 가져오기
+      </button>
+    </div>
+  </div>
+
+  <!-- 사진 카드 -->
+  <div class="card">
+    <div class="field-label">사진 선택 (JPEG · 여러 장 가능)</div>
+    <div class="dropzone" id="dropzone">사진을 여기로 끌어다 놓거나 클릭해서 선택하세요</div>
+    <input type="file" id="wFiles" accept=".jpg,.jpeg,image/jpeg" multiple style="display:none">
+    <div class="filelist" id="fileList"></div>
+    <label class="opt"><input type="checkbox" id="optSkipGps"> 이미 GPS가 있는 사진은 건너뛰기</label>
+    <label class="opt"><input type="checkbox" id="optSuffix" checked> 파일명 뒤에 _gps 붙이기</label>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="processPhotos('folder')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+        폴더에 저장 (권장)
+      </button>
+      <button class="btn-ghost" onclick="processPhotos('zip')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        ZIP 다운로드
+      </button>
+    </div>
+    <div class="status" id="wStatus"></div>
+  </div>
+
+  <!-- 안내 -->
+  <div class="guide">
+    <div class="guide-title">안내</div>
+    <div class="guide-item">
+      <span class="guide-tag">EXIF GPS</span>
+      <span class="guide-desc">사진 메타데이터에 위치정보를 기록합니다. 재압축하지 않으므로 화질 변화가 없습니다.</span>
+    </div>
+    <div class="guide-item">
+      <span class="guide-tag">폴더 저장</span>
+      <span class="guide-desc">Chrome·Edge 지원. 수백 장도 선택한 폴더에 바로 저장됩니다. (다른 브라우저는 ZIP 사용)</span>
+    </div>
+    <div class="guide-item">
+      <span class="guide-tag">개인정보</span>
+      <span class="guide-desc">사진은 서버로 전송되지 않고 전부 브라우저 안에서만 처리됩니다.</span>
+    </div>
+  </div>
+</main>
+
 <div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <script>
 // ── OLC (Plus Code) 구현 ─────────────────────────────────────────
@@ -810,6 +947,208 @@ function persistField(id, key) {
 }
 persistField('workerUrl', 'maps_worker_url');
 persistField('apiKey', 'anthropic_api_key');
+
+// ═══════════ 탭 전환 ═══════════
+function switchTab(name) {
+  const ex = name === 'extractor';
+  document.getElementById('tab-extractor').style.display = ex ? '' : 'none';
+  document.getElementById('tab-writer').style.display = ex ? 'none' : '';
+  document.getElementById('tabBtnExtractor').classList.toggle('active', ex);
+  document.getElementById('tabBtnWriter').classList.toggle('active', !ex);
+}
+
+// 추출기 결과 → 입력기로 전달
+function sendToWriter() {
+  const lat = document.getElementById('lat').textContent;
+  if (lat === '—') { showToast('먼저 좌표를 추출하세요'); return; }
+  document.getElementById('wCoords').value = lat + ', ' + document.getElementById('lng').textContent;
+  switchTab('writer');
+  showToast('좌표를 입력기로 가져왔습니다');
+}
+function pullFromExtractor() {
+  const lat = document.getElementById('lat').textContent;
+  if (lat === '—') { wSetStatus('추출기 탭에서 먼저 좌표를 추출해 주세요.', 'info'); return; }
+  document.getElementById('wCoords').value = lat + ', ' + document.getElementById('lng').textContent;
+  wSetStatus('추출기 결과를 가져왔습니다: ' + document.getElementById('wCoords').value, 'ok');
+}
+
+// ═══════════ 좌표 입력기 (EXIF GPS) ═══════════
+let wFilesSel = [];
+
+function wSetStatus(msg, type) {
+  const el = document.getElementById('wStatus');
+  el.className = 'status show ' + type;
+  if (type === 'loading') el.innerHTML = '<div class="spinner"></div><span>' + msg + '</span>';
+  else el.textContent = msg;
+}
+
+function parseLatLngText(text) {
+  const m = (text || '').match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const lat = +m[1], lng = +m[2];
+  if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+// 파일 선택 (드롭존 + 파일창)
+const dz = document.getElementById('dropzone');
+const wFilesInput = document.getElementById('wFiles');
+dz.addEventListener('click', () => wFilesInput.click());
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  setWriterFiles([...e.dataTransfer.files]);
+});
+wFilesInput.addEventListener('change', () => setWriterFiles([...wFilesInput.files]));
+
+function setWriterFiles(files) {
+  wFilesSel = files.filter(f => /\.jpe?g$/i.test(f.name) || f.type === 'image/jpeg');
+  const dropped = files.length - wFilesSel.length;
+  renderFileList();
+  if (files.length)
+    wSetStatus(`${wFilesSel.length}장 선택됨` + (dropped ? ` (JPEG 아닌 ${dropped}개 제외)` : ''),
+      wFilesSel.length ? 'info' : 'err');
+  scanGpsInfo();
+}
+
+// 선택한 사진들의 기존 EXIF GPS를 읽어 목록에 표시
+let wScanToken = 0;
+async function scanGpsInfo() {
+  if (typeof piexif === 'undefined') return;
+  const token = ++wScanToken;
+  for (let i = 0; i < wFilesSel.length; i++) {
+    if (token !== wScanToken) return; // 새 선택이 들어오면 중단
+    let g = null;
+    try { g = await readGps(wFilesSel[i]); } catch(e) {}
+    if (token !== wScanToken) return;
+    if (g) setFstat(i, `GPS: ${g.lat.toFixed(6)}, ${g.lng.toFixed(6)}`, 'has');
+    else setFstat(i, 'GPS 없음', 'skip');
+    if (i % 5 === 4) await new Promise(r => setTimeout(r, 0)); // UI 갱신 양보
+  }
+}
+
+async function readGps(f) {
+  const buf = await f.arrayBuffer();
+  const u8 = new Uint8Array(buf);
+  if (!(u8[0] === 0xFF && u8[1] === 0xD8)) return null;
+  let exifObj;
+  try { exifObj = piexif.load(bufToBinStr(buf)); } catch(e) { return null; }
+  const G = exifObj.GPS || {};
+  const latD = G[piexif.GPSIFD.GPSLatitude], lngD = G[piexif.GPSIFD.GPSLongitude];
+  if (!latD || !lngD) return null;
+  const toDeg = d => d[0][0]/d[0][1] + d[1][0]/d[1][1]/60 + d[2][0]/d[2][1]/3600;
+  let lat = toDeg(latD), lng = toDeg(lngD);
+  if ((G[piexif.GPSIFD.GPSLatitudeRef] || 'N') === 'S') lat = -lat;
+  if ((G[piexif.GPSIFD.GPSLongitudeRef] || 'E') === 'W') lng = -lng;
+  if (isNaN(lat) || isNaN(lng)) return null;
+  return { lat, lng };
+}
+
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+function renderFileList() {
+  document.getElementById('fileList').innerHTML = wFilesSel.map((f, i) =>
+    `<div class="fitem"><span>${escapeHtml(f.name)}</span><span class="fstat" id="fstat${i}">확인 중...</span></div>`).join('');
+}
+function setFstat(i, txt, cls) {
+  const el = document.getElementById('fstat' + i);
+  if (el) { el.textContent = txt; el.className = 'fstat ' + (cls || ''); }
+}
+
+// ArrayBuffer ↔ 바이너리 문자열 (piexif 입출력 형식)
+function bufToBinStr(buf) {
+  const u8 = new Uint8Array(buf); let s = ''; const CH = 0x8000;
+  for (let i = 0; i < u8.length; i += CH)
+    s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+  return s;
+}
+function binStrToBlob(s) {
+  const u8 = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) u8[i] = s.charCodeAt(i) & 0xFF;
+  return new Blob([u8], { type: 'image/jpeg' });
+}
+
+function outName(name) {
+  return document.getElementById('optSuffix').checked
+    ? name.replace(/(\.[^.]+)$/, '_gps$1') : name;
+}
+
+async function processPhotos(mode) {
+  const c = parseLatLngText(document.getElementById('wCoords').value);
+  if (!c) { wSetStatus('좌표를 "위도, 경도" 형식으로 입력해 주세요. 예: 37.4292, 126.9878', 'info'); return; }
+  if (!wFilesSel.length) { wSetStatus('사진을 먼저 선택해 주세요.', 'info'); return; }
+  if (typeof piexif === 'undefined') { wSetStatus('EXIF 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.', 'err'); return; }
+  if (mode === 'zip' && typeof JSZip === 'undefined') { wSetStatus('ZIP 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.', 'err'); return; }
+
+  let dirHandle = null;
+  if (mode === 'folder') {
+    if (!window.showDirectoryPicker) {
+      wSetStatus('이 브라우저는 폴더 저장을 지원하지 않습니다 (Chrome·Edge 필요). ZIP 다운로드를 사용해 주세요.', 'err');
+      return;
+    }
+    try { dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' }); }
+    catch (e) { return; } // 사용자가 취소
+  }
+  const zip = mode === 'zip' ? new JSZip() : null;
+  const skipGps = document.getElementById('optSkipGps').checked;
+
+  // 공통 GPS IFD (모든 사진에 동일 좌표)
+  const gpsIfd = {};
+  gpsIfd[piexif.GPSIFD.GPSVersionID] = [2, 3, 0, 0];
+  gpsIfd[piexif.GPSIFD.GPSLatitudeRef] = c.lat >= 0 ? 'N' : 'S';
+  gpsIfd[piexif.GPSIFD.GPSLatitude] = piexif.GPSHelper.degToDmsRational(Math.abs(c.lat));
+  gpsIfd[piexif.GPSIFD.GPSLongitudeRef] = c.lng >= 0 ? 'E' : 'W';
+  gpsIfd[piexif.GPSIFD.GPSLongitude] = piexif.GPSHelper.degToDmsRational(Math.abs(c.lng));
+
+  let ok = 0, skip = 0, fail = 0;
+  for (let i = 0; i < wFilesSel.length; i++) {
+    const f = wFilesSel[i];
+    setFstat(i, '처리 중...');
+    wSetStatus(`처리 중... ${i + 1} / ${wFilesSel.length}`, 'loading');
+    try {
+      const buf = await f.arrayBuffer();
+      const u8 = new Uint8Array(buf);
+      if (!(u8[0] === 0xFF && u8[1] === 0xD8)) { skip++; setFstat(i, 'JPEG 아님 · 건너뜀', 'skip'); continue; }
+      const bin = bufToBinStr(buf);
+      let exifObj;
+      try { exifObj = piexif.load(bin); }
+      catch (e) { exifObj = { '0th': {}, 'Exif': {}, 'GPS': {}, '1st': {}, 'thumbnail': null }; }
+      if (skipGps && exifObj.GPS && exifObj.GPS[piexif.GPSIFD.GPSLatitude]) {
+        skip++; setFstat(i, 'GPS 있음 · 건너뜀', 'skip'); continue;
+      }
+      exifObj.GPS = Object.assign({}, exifObj.GPS, gpsIfd);
+      const out = piexif.insert(piexif.dump(exifObj), bin);
+      const blob = binStrToBlob(out);
+      const name = outName(f.name);
+      if (dirHandle) {
+        const fh = await dirHandle.getFileHandle(name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(blob);
+        await w.close();
+      } else {
+        zip.file(name, blob);
+      }
+      ok++; setFstat(i, '완료', 'done');
+    } catch (e) {
+      fail++; setFstat(i, '실패: ' + (e.message || e), 'fail');
+    }
+    if (i % 3 === 2) await new Promise(r => setTimeout(r, 0)); // UI 갱신 양보
+  }
+
+  if (zip && ok > 0) {
+    wSetStatus('ZIP 압축 중...', 'loading');
+    const blob = await zip.generateAsync({ type: 'blob' },
+      p => wSetStatus(`ZIP 압축 중... ${Math.round(p.percent)}%`, 'loading'));
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'photos_gps.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  }
+  wSetStatus(`완료: 성공 ${ok} · 건너뜀 ${skip} · 실패 ${fail}` +
+    (dirHandle && ok ? ' — 선택한 폴더에 저장되었습니다' : ''), fail ? 'err' : 'ok');
+}
 </script>
 </body>
 </html>
