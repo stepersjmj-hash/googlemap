@@ -36,7 +36,7 @@
 - 종료: `Local Server - maps` 창을 닫거나 그 창에서 `Ctrl+C`.
 - 포트 변경: bat 파일 위쪽 `set "PORT=8000"` 숫자만 수정.
 
-> 단축 URL 펼치기(Worker)나 AI 검색 같은 네트워크 호출은
+> 단축 URL 펼치기(Worker) 같은 네트워크 호출은
 > `file://`보다 `http://localhost`에서 더 안정적이라 로컬 서버를 권장합니다.
 
 ---
@@ -69,9 +69,6 @@ URL 안의 [Open Location Code](https://maps.google.com/pluscodes/)를 자동 �
 `maps.app.goo.gl/...` 같은 단축 URL은 좌표를 직접 담고 있지 않습니다.
 Cloudflare Worker가 리다이렉트를 따라가 **실제 URL**을 알아낸 뒤,
 그 URL에 대해 다시 1)·2) 추출을 적용합니다. (→ [Worker 설정](#%EF%B8%8F-cloudflare-worker-설정))
-
-### 4) AI 웹 검색 (선택 폴백)
-위 방법으로 모두 실패할 때, Anthropic API로 좌표를 추적합니다. (→ [API 키 설정](#-ai-검색-api-키-선택))
 
 ---
 
@@ -135,19 +132,6 @@ https://<당신워커>.workers.dev/?url=https://maps.app.goo.gl/<실제코드>
 
 ---
 
-## 🤖 AI 검색 API 키 (선택)
-
-단축 URL을 Worker로도 못 풀 때를 위한 마지막 폴백입니다. 없어도 대부분 동작합니다.
-
-1. <https://console.anthropic.com> 에서 API 키 발급 (`sk-ant-...`)
-2. 앱의 **Anthropic API 키** 칸에 입력 (브라우저에만 저장)
-
-> ⚠️ **보안**: 이 방식은 브라우저에서 Anthropic API를 직접 호출하므로 **API 키가 클라이언트에 노출**됩니다.
-> 본인 PC에서 혼자 쓰는 로컬 도구라면 괜찮지만, **이 HTML을 외부에 공개·배포하지 마세요.**
-> 공개가 필요하면 키를 숨기는 별도 프록시 서버를 두어야 합니다.
-
----
-
 ## 🔧 문제 해결
 
 **"단축 URL은 펼쳤지만 좌표를 찾지 못했습니다"**
@@ -164,17 +148,13 @@ https://<당신워커>.workers.dev/?url=https://maps.app.goo.gl/<실제코드>
 배치 파일은 ASCII 전용으로 작성돼 있습니다. 직접 수정할 경우 한글을 넣지 말고
 UTF-8(BOM 없음) 또는 ANSI로 저장하세요.
 
-**AI 검색이 인증 오류**
-API 키가 비었거나 잘못됐습니다. `sk-ant-`로 시작하는 유효한 키인지 확인하세요.
-
 ---
 
 ## 🔒 개인정보·보안 요약
 
 - 좌표 URL·Plus Code 추출은 **완전히 오프라인**(브라우저 내부)에서 처리됩니다.
 - 단축 URL만 Worker로 전송되며, Worker는 구글 외 다른 곳에 데이터를 보내지 않습니다.
-- API 키·Worker 주소는 **브라우저 localStorage**에만 저장되고 외부로 전송되지 않습니다.
-- 단, AI 검색 사용 시에는 해당 URL이 Anthropic API로 전송됩니다.
+- Worker 주소는 **브라우저 localStorage**에만 저장되고 외부로 전송되지 않습니다.
 
 ---
 
