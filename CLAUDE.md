@@ -52,7 +52,10 @@ Cloudflare 대시보드 → 해당 워커 → Edit code → 전체 교체 → De
 
 **노트에 쓰기**는 두 갈래다. `addToNote()` → `insertIntoNote()`는 한 곳만 끼워 넣고,
 `exportToNote()` → `buildNoteText()`는 목록 전체로 노트를 다시 쓴다(첫 그룹 제목 앞 머리말은 보존).
-그룹 탭의 ×(`deleteGroup()`)는 화면 목록에서만 지우므로, 노트 반영은 내보내기로 한다.
+× 버튼(`deleteGroup()` / `deletePlace()`)은 화면 목록에서만 지우므로 노트 반영은 내보내기로 한다.
+삭제 전 `snapshotPresets()`로 스냅샷을 떠서 '삭제 되돌리기'를 제공하고, 가져오기·내보내기 후에는
+`clearUndo()`로 스냅샷을 버린다(노트와 어긋난 상태로 되돌리는 걸 막기 위해).
+탭·칩 안의 ×는 `event.stopPropagation()`으로 본래 클릭(그룹 전환·좌표 채우기)과 분리한다.
 
 공통 주의: 파일 선택창·권한 요청은 클릭 직후에만 허용된다. 그래서 파일 핸들을 페이지 로드 때
 `noteHandle`로 미리 읽어 두고, 버튼 핸들러에서는 다른 await보다 `getNoteHandle()`을 먼저 부른다.

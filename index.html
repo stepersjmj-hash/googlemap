@@ -257,9 +257,20 @@ textarea:focus { border-color: var(--accent); }
   color: var(--text);
   font-size: 12px;
   font-weight: 400;
-  padding: 7px 13px;
+  padding: 7px 9px 7px 13px;
   border-radius: var(--radius-sm);
 }
+.chip-x {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.35;
+  padding: 0 3px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.chip-x:hover { opacity: 1; color: var(--danger); background: var(--danger-bg); }
+.chip.active .chip-x { opacity: 0.75; }
+.chip.active .chip-x:hover { color: #fff; background: rgba(255,255,255,0.22); }
 .chip:hover { border-color: var(--accent); background: var(--info-bg); color: var(--accent-light); }
 .chip.active { background: var(--accent); border-color: transparent; color: #fff; }
 .add-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
@@ -633,6 +644,12 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
       </button>
     </div>
     <div class="status" id="presetStatus"></div>
+    <div class="btn-row" id="undoRow" style="display:none">
+      <button class="btn-ghost" onclick="undoPresetDelete()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+        삭제 되돌리기
+      </button>
+    </div>
   </div>
 
   <!-- 사진 카드 -->
@@ -1062,7 +1079,8 @@ function renderPresets() {
   ).join('');
   document.getElementById('presetChips').innerHTML = COORD_PRESETS.length
     ? COORD_PRESETS[presetGroup].items.map((it, i) =>
-        `<button class="chip${i === presetPick ? ' active' : ''}" onclick="pickPreset(${i})" title="${it[1].toFixed(6)}, ${it[2].toFixed(6)}">${escapeHtml(it[0])}</button>`
+        `<button class="chip${i === presetPick ? ' active' : ''}" onclick="pickPreset(${i})" title="${it[1].toFixed(6)}, ${it[2].toFixed(6)}">${escapeHtml(it[0])}` +
+        `<span class="chip-x" title="이 장소 삭제" onclick="event.stopPropagation();deletePlace(${i})">×</span></button>`
       ).join('')
     : '<span class="preset-meta">목록이 비었습니다. 노트에서 가져오거나 아래에서 추가하세요.</span>';
   let meta = '';
@@ -1105,12 +1123,35 @@ function presetCount() {
   return COORD_PRESETS.reduce((n, g) => n + g.items.length, 0);
 }
 
-// 그룹 삭제 (화면 목록에서만 — 노트에는 '노트에 내보내기'로 반영)
+// ── 삭제와 되돌리기 (모두 화면 목록에서만 — 노트에는 '내보내기'로 반영) ──
+let presetUndo = null;
+
+function snapshotPresets() {
+  presetUndo = JSON.parse(JSON.stringify(COORD_PRESETS));
+  document.getElementById('undoRow').style.display = '';
+}
+function clearUndo() {
+  presetUndo = null;
+  document.getElementById('undoRow').style.display = 'none';
+}
+function undoPresetDelete() {
+  if (!presetUndo) return;
+  COORD_PRESETS = presetUndo;
+  clearUndo();
+  if (presetGroup >= COORD_PRESETS.length) presetGroup = Math.max(0, COORD_PRESETS.length - 1);
+  presetPick = -1;
+  savePresets();
+  renderPresets();
+  pSetStatus('삭제를 되돌렸습니다.', 'ok');
+  showToast('되돌렸습니다');
+}
+
 function deleteGroup(i) {
   const g = COORD_PRESETS[i];
   if (!g) return;
   if (!confirm(`"${g.group}" 그룹과 그 안의 ${g.items.length}곳을 목록에서 지웁니다.\n\n노트 파일은 아직 그대로이며, "노트에 내보내기"를 눌러야 반영됩니다.\n계속할까요?`)) return;
 
+  snapshotPresets();
   COORD_PRESETS.splice(i, 1);
   if (presetGroup >= COORD_PRESETS.length) presetGroup = Math.max(0, COORD_PRESETS.length - 1);
   presetPick = -1;
@@ -1118,6 +1159,27 @@ function deleteGroup(i) {
   renderPresets();
   pSetStatus(`"${g.group}" 그룹을 목록에서 지웠습니다. 노트에도 반영하려면 "노트에 내보내기"를 누르세요.`, 'info');
   showToast(`"${g.group}" 그룹 삭제됨`);
+}
+
+// 장소 한 곳 삭제 (되돌리기가 있으니 확인 창 없이 바로)
+function deletePlace(i) {
+  const g = COORD_PRESETS[presetGroup];
+  if (!g || !g.items[i]) return;
+  const name = g.items[i][0];
+
+  snapshotPresets();
+  g.items.splice(i, 1);
+  let msg = `"${name}"을(를) 목록에서 지웠습니다.`;
+  if (!g.items.length) {  // 비어 버린 그룹은 함께 정리 (내보내기 형식과 맞추기 위해)
+    COORD_PRESETS.splice(presetGroup, 1);
+    if (presetGroup >= COORD_PRESETS.length) presetGroup = Math.max(0, COORD_PRESETS.length - 1);
+    msg += ` 비어 버린 "${g.group}" 그룹도 함께 정리했습니다.`;
+  }
+  presetPick = -1;
+  savePresets();
+  renderPresets();
+  pSetStatus(msg + ' 노트에도 반영하려면 "노트에 내보내기"를 누르세요.', 'info');
+  showToast(`"${name}" 삭제됨`);
 }
 
 // ── 노트 파싱 ────────────────────────────────────────────────────
@@ -1162,6 +1224,7 @@ function applyPresetNote(text, source) {
   }
   COORD_PRESETS = parsed;
   presetGroup = 0; presetPick = -1;
+  clearUndo();                       // 새로 불러왔으니 이전 삭제는 되돌릴 대상이 아니다
   const count = presetCount();
   savePresets(`${source} · ${parsed.length}그룹 ${count}곳`);
   renderPresets();
@@ -1384,6 +1447,7 @@ async function exportToNote() {
     await w.write(after);
     await w.close();
 
+    clearUndo();                     // 노트에 반영됐으니 되돌리기는 더 이상 안전하지 않다
     savePresets(`${file.name} · ${COORD_PRESETS.length}그룹 ${presetCount()}곳`);
     renderPresets();
     pSetStatus(`노트에 내보냈습니다 — ${COORD_PRESETS.length}개 그룹, ${presetCount()}곳`, 'ok');
