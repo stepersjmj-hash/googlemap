@@ -230,10 +230,20 @@ textarea:focus { border-color: var(--accent); }
   background: transparent;
   border: 1px solid var(--border2);
   color: var(--muted);
-  padding: 5px 14px;
+  padding: 5px 10px 5px 14px;
   border-radius: 16px;
   font-size: 12px;
+  gap: 7px;
 }
+.tab-x {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.4;
+  padding: 0 3px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.tab-x:hover { opacity: 1; color: var(--danger); background: var(--danger-bg); }
 .preset-tab:hover { color: var(--text); background: var(--surface2); }
 .preset-tab.active {
   background: var(--surface2);
@@ -601,6 +611,10 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
       <button class="btn-ghost" onclick="importPresets()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
         노트에서 가져오기
+      </button>
+      <button class="btn-ghost" onclick="exportToNote()" title="현재 목록으로 노트를 덮어씁니다">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M5 15h4v6h6v-6h4l-7-7-7 7zM5 3v2h14V3H5z"/></svg>
+        노트에 내보내기
       </button>
       <button class="btn-ghost" onclick="importPresets(true)" title="다른 노트 파일을 선택합니다">다른 노트 선택</button>
       <span class="preset-meta" id="presetMeta"></span>
@@ -1043,11 +1057,14 @@ try {
 function renderPresets() {
   if (presetGroup >= COORD_PRESETS.length) presetGroup = 0;
   document.getElementById('presetTabs').innerHTML = COORD_PRESETS.map((g, i) =>
-    `<button class="preset-tab${i === presetGroup ? ' active' : ''}" onclick="pickPresetGroup(${i})">${escapeHtml(g.group)}</button>`
+    `<button class="preset-tab${i === presetGroup ? ' active' : ''}" onclick="pickPresetGroup(${i})">${escapeHtml(g.group)}` +
+    `<span class="tab-x" title="이 그룹 삭제" onclick="event.stopPropagation();deleteGroup(${i})">×</span></button>`
   ).join('');
-  document.getElementById('presetChips').innerHTML = COORD_PRESETS[presetGroup].items.map((it, i) =>
-    `<button class="chip${i === presetPick ? ' active' : ''}" onclick="pickPreset(${i})" title="${it[1].toFixed(6)}, ${it[2].toFixed(6)}">${escapeHtml(it[0])}</button>`
-  ).join('');
+  document.getElementById('presetChips').innerHTML = COORD_PRESETS.length
+    ? COORD_PRESETS[presetGroup].items.map((it, i) =>
+        `<button class="chip${i === presetPick ? ' active' : ''}" onclick="pickPreset(${i})" title="${it[1].toFixed(6)}, ${it[2].toFixed(6)}">${escapeHtml(it[0])}</button>`
+      ).join('')
+    : '<span class="preset-meta">목록이 비었습니다. 노트에서 가져오거나 아래에서 추가하세요.</span>';
   let meta = '';
   try { meta = localStorage.getItem(PRESET_META_KEY) || ''; } catch(e) {}
   const el = document.getElementById('presetMeta');
@@ -1075,6 +1092,32 @@ function pSetStatus(msg, type) {
   const el = document.getElementById('presetStatus');
   el.className = 'status show ' + type;
   el.textContent = msg;
+}
+
+function savePresets(meta) {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(COORD_PRESETS));
+    if (meta) localStorage.setItem(PRESET_META_KEY, meta);
+  } catch(e) {}
+}
+
+function presetCount() {
+  return COORD_PRESETS.reduce((n, g) => n + g.items.length, 0);
+}
+
+// 그룹 삭제 (화면 목록에서만 — 노트에는 '노트에 내보내기'로 반영)
+function deleteGroup(i) {
+  const g = COORD_PRESETS[i];
+  if (!g) return;
+  if (!confirm(`"${g.group}" 그룹과 그 안의 ${g.items.length}곳을 목록에서 지웁니다.\n\n노트 파일은 아직 그대로이며, "노트에 내보내기"를 눌러야 반영됩니다.\n계속할까요?`)) return;
+
+  COORD_PRESETS.splice(i, 1);
+  if (presetGroup >= COORD_PRESETS.length) presetGroup = Math.max(0, COORD_PRESETS.length - 1);
+  presetPick = -1;
+  savePresets();
+  renderPresets();
+  pSetStatus(`"${g.group}" 그룹을 목록에서 지웠습니다. 노트에도 반영하려면 "노트에 내보내기"를 누르세요.`, 'info');
+  showToast(`"${g.group}" 그룹 삭제됨`);
 }
 
 // ── 노트 파싱 ────────────────────────────────────────────────────
@@ -1119,11 +1162,8 @@ function applyPresetNote(text, source) {
   }
   COORD_PRESETS = parsed;
   presetGroup = 0; presetPick = -1;
-  const count = parsed.reduce((n, g) => n + g.items.length, 0);
-  try {
-    localStorage.setItem(PRESET_KEY, JSON.stringify(parsed));
-    localStorage.setItem(PRESET_META_KEY, `${source} · ${parsed.length}그룹 ${count}곳`);
-  } catch(e) {}
+  const count = presetCount();
+  savePresets(`${source} · ${parsed.length}그룹 ${count}곳`);
   renderPresets();
   pSetStatus(`노트에서 가져왔습니다 — ${parsed.length}개 그룹, ${count}곳`, 'ok');
 }
@@ -1281,6 +1321,78 @@ function insertIntoNote(text, group, name, lat, lng) {
   const out = lines.slice();
   out.splice(at, 0, ...itemLines);
   return { text: out.join(nl), replaced: false, newGroup: false };
+}
+
+// ── 노트로 내보내기 ──────────────────────────────────────────────
+// 현재 목록 전체를 노트 형식으로 다시 쓴다. 첫 그룹 제목 앞의 머리말은 보존한다.
+function buildNoteText(existing) {
+  const nl = existing.includes('\r\n') ? '\r\n' : '\n';
+  const lines = existing.split(/\r?\n/);
+  let { groupLevel, itemLevel } = noteHeadingLevels(lines);
+  if (!groupLevel) { groupLevel = 3; itemLevel = 4; }
+
+  let firstIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/^(#{1,6})\s*(.+)$/);
+    if (m && m[1].length === groupLevel) { firstIdx = i; break; }
+  }
+  const head = firstIdx > 0 ? lines.slice(0, firstIdx) : [];
+  while (head.length && !head[head.length - 1].trim()) head.pop();
+
+  const out = head.length ? head.concat('') : [];
+  COORD_PRESETS.forEach((g, gi) => {
+    if (gi) out.push('');
+    out.push('#'.repeat(groupLevel) + ' ' + g.group);
+    for (const [name, lat, lng] of g.items) {
+      out.push('#'.repeat(itemLevel) + ' ' + name);
+      out.push(lat.toFixed(6) + ', ' + lng.toFixed(6));
+    }
+  });
+  return out.join(nl) + nl;
+}
+
+async function exportToNote() {
+  if (!COORD_PRESETS.length) { pSetStatus('내보낼 목록이 없습니다.', 'info'); return; }
+
+  if (!window.showOpenFilePicker) {
+    try {
+      await navigator.clipboard.writeText(buildNoteText(''));
+      pSetStatus('이 브라우저는 노트에 직접 쓸 수 없어 전체 목록을 복사했습니다.\n노트에 붙여넣어 주세요.', 'info');
+    } catch(e) {
+      pSetStatus('이 브라우저는 노트에 직접 쓸 수 없습니다. Chrome·Edge를 사용해 주세요.', 'err');
+    }
+    return;
+  }
+
+  try {
+    const handle = await getNoteHandle('readwrite');   // 클릭 제스처가 살아 있을 때 먼저
+    const file = await handle.getFile();
+    const before = await file.text();
+    const after = buildNoteText(before);
+
+    if (before.replace(/\s+/g, '') === after.replace(/\s+/g, '')) {
+      pSetStatus('노트가 이미 현재 목록과 같습니다.', 'info');
+      return;
+    }
+    // 노트를 통째로 다시 쓰는 작업이라 한 번 확인받는다
+    if (!confirm(`${file.name} 을(를) 현재 목록으로 덮어씁니다.\n\n${COORD_PRESETS.length}개 그룹 · ${presetCount()}곳\n\n노트에만 있고 목록에 없는 장소는 사라집니다. 계속할까요?`)) {
+      pSetStatus('취소했습니다. 노트는 그대로입니다.', 'info');
+      return;
+    }
+
+    const w = await handle.createWritable();
+    await w.write(after);
+    await w.close();
+
+    savePresets(`${file.name} · ${COORD_PRESETS.length}그룹 ${presetCount()}곳`);
+    renderPresets();
+    pSetStatus(`노트에 내보냈습니다 — ${COORD_PRESETS.length}개 그룹, ${presetCount()}곳`, 'ok');
+    showToast('노트에 내보냈습니다');
+  } catch(e) {
+    if (e && e.name === 'AbortError') { pSetStatus('취소했습니다. 노트는 그대로입니다.', 'info'); return; }
+    pSetStatus('노트에 쓰지 못했습니다: ' + fsErrorText(e), 'err');
+    showToast('노트에 쓰지 못했습니다');
+  }
 }
 
 async function addToNote() {
