@@ -252,6 +252,15 @@ textarea:focus { border-color: var(--accent); }
 }
 .chip:hover { border-color: var(--accent); background: var(--info-bg); color: var(--accent-light); }
 .chip.active { background: var(--accent); border-color: transparent; color: #fff; }
+.preset-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  align-self: center;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .btn-row {
   display: flex;
@@ -584,6 +593,15 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
     <div class="field-label">자주 쓰는 좌표</div>
     <div class="preset-tabs" id="presetTabs"></div>
     <div class="preset-chips" id="presetChips"></div>
+    <div class="btn-row">
+      <button class="btn-ghost" onclick="importPresets()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+        노트에서 가져오기
+      </button>
+      <button class="btn-ghost" onclick="importPresets(true)" title="다른 노트 파일을 선택합니다">다른 노트 선택</button>
+      <span class="preset-meta" id="presetMeta"></span>
+    </div>
+    <input type="file" id="presetFile" accept=".md,.txt,text/markdown,text/plain" style="display:none">
   </div>
 
   <!-- 사진 카드 -->
@@ -966,13 +984,14 @@ function pullFromExtractor() {
 }
 
 // ═══════════ 자주 쓰는 좌표 ═══════════
-const COORD_PRESETS = [
-  { group: '집·동네', items: [
+// 옵시디언 노트를 못 읽을 때 쓰는 기본 목록
+const DEFAULT_PRESETS = [
+  { group: '집', items: [
     ['오포3차',           37.359282, 127.149817],
     ['라온',              37.357070, 127.149906],
     ['보문동',            37.582341, 127.021501],
   ]},
-  { group: '공원·나들이', items: [
+  { group: '공원-나들이', items: [
     ['에버랜드',          37.293983, 127.202588],
     ['서울랜드',          37.434188, 127.020188],
     ['율동공원',          37.377634, 127.151539],
@@ -985,7 +1004,7 @@ const COORD_PRESETS = [
     ['이마트분당점',      37.358936, 127.119792],
     ['이케아광명점',      37.424188, 126.882187],
   ]},
-  { group: '여행·리조트', items: [
+  { group: '여행-리조트', items: [
     ['비발디파크',        37.648217, 127.684101],
     ['인스파이어',        37.465889, 126.386882],
     ['파라다이스시티',    37.437150, 126.455803],
@@ -993,16 +1012,149 @@ const COORD_PRESETS = [
   ]},
 ];
 
+const PRESET_KEY = 'coord_presets', PRESET_META_KEY = 'coord_presets_meta';
+
+let COORD_PRESETS = DEFAULT_PRESETS;
 let presetGroup = 0, presetPick = -1;
 
+// 저장해 둔 노트 목록이 있으면 그걸 우선 사용
+try {
+  const saved = JSON.parse(localStorage.getItem(PRESET_KEY) || 'null');
+  if (Array.isArray(saved) && saved.length) COORD_PRESETS = saved;
+} catch(e) {}
+
 function renderPresets() {
+  if (presetGroup >= COORD_PRESETS.length) presetGroup = 0;
   document.getElementById('presetTabs').innerHTML = COORD_PRESETS.map((g, i) =>
     `<button class="preset-tab${i === presetGroup ? ' active' : ''}" onclick="pickPresetGroup(${i})">${escapeHtml(g.group)}</button>`
   ).join('');
   document.getElementById('presetChips').innerHTML = COORD_PRESETS[presetGroup].items.map((it, i) =>
     `<button class="chip${i === presetPick ? ' active' : ''}" onclick="pickPreset(${i})" title="${it[1].toFixed(6)}, ${it[2].toFixed(6)}">${escapeHtml(it[0])}</button>`
   ).join('');
+  let meta = '';
+  try { meta = localStorage.getItem(PRESET_META_KEY) || ''; } catch(e) {}
+  const el = document.getElementById('presetMeta');
+  el.textContent = meta;
+  el.title = meta;
 }
+
+// ── 노트 파싱 ────────────────────────────────────────────────────
+// 좌표가 뒤따르는 이름 = 장소, 좌표가 없는 이름 = 그룹 제목.
+// '### 그룹 / #### 장소' 형식과 제목 없는 옛 형식(빈 줄로 그룹 구분)을 모두 처리한다.
+function parsePresetNote(text) {
+  const COORD_RE = /^\(?\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*\)?$/;
+  const groups = [];
+  let cur = null, curAuto = false, pending = null;
+
+  const openGroup = (name, auto) => { cur = { group: name, items: [] }; curAuto = !!auto; groups.push(cur); };
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) { if (curAuto) { cur = null; curAuto = false; } continue; }
+
+    const m = line.match(COORD_RE);
+    if (m) {
+      const lat = +m[1], lng = +m[2];
+      if (pending && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        if (!cur) openGroup('그룹 ' + (groups.length + 1), true);
+        cur.items.push([pending, lat, lng]);
+      }
+      pending = null;
+      continue;
+    }
+
+    const name = line.replace(/^#{1,6}\s*/, '').replace(/^[-*+]\s+/, '').trim();
+    if (!name) continue;
+    if (pending) openGroup(pending, false); // 좌표가 안 붙은 이름 → 그룹 제목
+    pending = name;
+  }
+  return groups.filter(g => g.items.length);
+}
+
+function applyPresetNote(text, source) {
+  const parsed = parsePresetNote(text);
+  if (!parsed.length) {
+    wSetStatus('노트에서 좌표를 찾지 못했습니다.\n"이름" 다음 줄에 "위도, 경도"가 오는 형식인지 확인해 주세요.', 'err');
+    return;
+  }
+  COORD_PRESETS = parsed;
+  presetGroup = 0; presetPick = -1;
+  const count = parsed.reduce((n, g) => n + g.items.length, 0);
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(parsed));
+    localStorage.setItem(PRESET_META_KEY, `${source} · ${parsed.length}그룹 ${count}곳`);
+  } catch(e) {}
+  renderPresets();
+  wSetStatus(`노트에서 가져왔습니다 — ${parsed.length}개 그룹, ${count}곳`, 'ok');
+}
+
+// ── 파일 핸들 기억 (다음부터 클릭 한 번에 갱신) ──────────────────
+const IDB_NAME = 'mapstool', IDB_STORE = 'handles', IDB_KEY = 'presetNote';
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbSet(key, val) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(val, key);
+    tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_STORE, 'readonly');
+    const rq = tx.objectStore(IDB_STORE).get(key);
+    rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+  });
+}
+
+async function importPresets(forcePick) {
+  // File System Access 미지원 브라우저 → 일반 파일 선택창
+  if (!window.showOpenFilePicker) { document.getElementById('presetFile').click(); return; }
+
+  try {
+    let handle = forcePick ? null : await idbGet(IDB_KEY).catch(() => null);
+
+    if (handle) { // 기억해 둔 파일: 권한 확인 후 재사용
+      try {
+        let perm = await handle.queryPermission({ mode: 'read' });
+        if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'read' });
+        if (perm !== 'granted') handle = null;
+      } catch(e) { handle = null; }
+    }
+
+    if (handle) { // 파일이 옮겨졌거나 지워졌으면 다시 고르게 한다
+      try { await handle.getFile(); }
+      catch(e) { handle = null; }
+    }
+
+    if (!handle) {
+      [handle] = await window.showOpenFilePicker({
+        types: [{ description: '마크다운 노트', accept: { 'text/markdown': ['.md', '.txt'] } }],
+      });
+      await idbSet(IDB_KEY, handle).catch(() => {});
+    }
+
+    const file = await handle.getFile();
+    applyPresetNote(await file.text(), file.name);
+  } catch(e) {
+    if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) return; // 사용자가 취소
+    wSetStatus('노트를 가져오지 못했습니다: ' + (e.message || e), 'err');
+  }
+}
+
+document.getElementById('presetFile').addEventListener('change', async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (f) applyPresetNote(await f.text(), f.name);
+});
 
 function pickPresetGroup(i) {
   presetGroup = i; presetPick = -1;
