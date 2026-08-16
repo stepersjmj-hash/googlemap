@@ -252,6 +252,10 @@ textarea:focus { border-color: var(--accent); }
 }
 .chip:hover { border-color: var(--accent); background: var(--info-bg); color: var(--accent-light); }
 .chip.active { background: var(--accent); border-color: transparent; color: #fff; }
+.add-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.add-row .apikey-input { flex: 1 1 140px; min-width: 130px; }
+.add-row select.apikey-input { flex: 0 1 150px; cursor: pointer; color-scheme: dark; }
+.add-row button { flex: 0 0 auto; }
 .preset-meta {
   font-size: 11.5px;
   color: var(--muted);
@@ -602,6 +606,18 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
       <span class="preset-meta" id="presetMeta"></span>
     </div>
     <input type="file" id="presetFile" accept=".md,.txt,text/markdown,text/plain" style="display:none">
+
+    <hr class="divider">
+    <div class="field-label">노트에 추가 <span style="text-transform:none;font-weight:400">(위 좌표 칸의 값이 저장됩니다)</span></div>
+    <div class="add-row">
+      <input type="text" id="newName" class="apikey-input" placeholder="장소 이름" autocomplete="off">
+      <select id="newGroup" class="apikey-input" onchange="toggleNewGroup()"></select>
+      <input type="text" id="newGroupName" class="apikey-input" placeholder="새 그룹 이름" autocomplete="off" style="display:none">
+      <button class="btn-primary" onclick="addToNote()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        추가하기
+      </button>
+    </div>
   </div>
 
   <!-- 사진 카드 -->
@@ -1036,6 +1052,21 @@ function renderPresets() {
   const el = document.getElementById('presetMeta');
   el.textContent = meta;
   el.title = meta;
+
+  // '노트에 추가'의 그룹 선택지도 목록에 맞춰 갱신
+  const sel = document.getElementById('newGroup');
+  const prev = sel.value;
+  sel.innerHTML = COORD_PRESETS.map(g =>
+    `<option value="${escapeHtml(g.group)}">${escapeHtml(g.group)}</option>`).join('')
+    + '<option value="__new__">+ 새 그룹</option>';
+  const cur = COORD_PRESETS[presetGroup] && COORD_PRESETS[presetGroup].group;
+  sel.value = [...sel.options].some(o => o.value === prev) && prev !== '__new__' ? prev : (cur || '__new__');
+  toggleNewGroup();
+}
+
+function toggleNewGroup() {
+  const isNew = document.getElementById('newGroup').value === '__new__';
+  document.getElementById('newGroupName').style.display = isNew ? '' : 'none';
 }
 
 // ── 노트 파싱 ────────────────────────────────────────────────────
@@ -1115,38 +1146,169 @@ async function idbGet(key) {
   });
 }
 
+// 기억해 둔 노트 파일을 mode('read'|'readwrite') 권한으로 얻는다. 없으면 선택창을 띄운다.
+async function getNoteHandle(mode, forcePick) {
+  const ask = async h => {
+    let perm = await h.queryPermission({ mode });
+    if (perm !== 'granted') perm = await h.requestPermission({ mode });
+    return perm === 'granted';
+  };
+
+  let handle = forcePick ? null : await idbGet(IDB_KEY).catch(() => null);
+
+  if (handle) {
+    try { if (!await ask(handle)) handle = null; } catch(e) { handle = null; }
+  }
+  if (handle) { // 파일이 옮겨졌거나 지워졌으면 다시 고르게 한다
+    try { await handle.getFile(); } catch(e) { handle = null; }
+  }
+  if (!handle) {
+    [handle] = await window.showOpenFilePicker({
+      types: [{ description: '마크다운 노트', accept: { 'text/markdown': ['.md', '.txt'] } }],
+    });
+    if (!await ask(handle)) throw new Error('파일 접근 권한이 필요합니다.');
+    await idbSet(IDB_KEY, handle).catch(() => {});
+  }
+  return handle;
+}
+
 async function importPresets(forcePick) {
   // File System Access 미지원 브라우저 → 일반 파일 선택창
   if (!window.showOpenFilePicker) { document.getElementById('presetFile').click(); return; }
-
   try {
-    let handle = forcePick ? null : await idbGet(IDB_KEY).catch(() => null);
-
-    if (handle) { // 기억해 둔 파일: 권한 확인 후 재사용
-      try {
-        let perm = await handle.queryPermission({ mode: 'read' });
-        if (perm !== 'granted') perm = await handle.requestPermission({ mode: 'read' });
-        if (perm !== 'granted') handle = null;
-      } catch(e) { handle = null; }
-    }
-
-    if (handle) { // 파일이 옮겨졌거나 지워졌으면 다시 고르게 한다
-      try { await handle.getFile(); }
-      catch(e) { handle = null; }
-    }
-
-    if (!handle) {
-      [handle] = await window.showOpenFilePicker({
-        types: [{ description: '마크다운 노트', accept: { 'text/markdown': ['.md', '.txt'] } }],
-      });
-      await idbSet(IDB_KEY, handle).catch(() => {});
-    }
-
+    const handle = await getNoteHandle('read', forcePick);
     const file = await handle.getFile();
     applyPresetNote(await file.text(), file.name);
   } catch(e) {
     if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) return; // 사용자가 취소
     wSetStatus('노트를 가져오지 못했습니다: ' + (e.message || e), 'err');
+  }
+}
+
+// ── 노트에 추가 ──────────────────────────────────────────────────
+const NOTE_COORD_RE = /^\(?\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*\)?$/;
+
+// 노트가 쓰는 제목 수준을 알아낸다 (좌표가 뒤따르면 장소, 아니면 그룹)
+function noteHeadingLevels(lines) {
+  let groupLevel = 0, itemLevel = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/^(#{1,6})\s*(.+)$/);
+    if (!m) continue;
+    let j = i + 1;
+    while (j < lines.length && !lines[j].trim()) j++;
+    const nextIsCoord = j < lines.length && NOTE_COORD_RE.test(lines[j].trim());
+    if (nextIsCoord) { if (!itemLevel) itemLevel = m[1].length; }
+    else if (!groupLevel) groupLevel = m[1].length;
+    if (groupLevel && itemLevel) break;
+  }
+  if (groupLevel && !itemLevel) itemLevel = Math.min(6, groupLevel + 1);
+  if (itemLevel && !groupLevel) groupLevel = Math.max(1, itemLevel - 1);
+  return { groupLevel, itemLevel };
+}
+
+// 노트 본문에 장소를 끼워 넣는다. 같은 그룹에 같은 이름이 있으면 좌표만 갱신.
+function insertIntoNote(text, group, name, lat, lng) {
+  const nl = text.includes('\r\n') ? '\r\n' : '\n';
+  const lines = text.split(/\r?\n/);
+  const { groupLevel, itemLevel } = noteHeadingLevels(lines);
+  const coordLine = lat.toFixed(6) + ', ' + lng.toFixed(6);
+  const itemLines = [(itemLevel ? '#'.repeat(itemLevel) + ' ' : '') + name, coordLine];
+
+  // 대상 그룹 구간 [start, end)
+  let start = -1, end = lines.length;
+  if (groupLevel) {
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].trim().match(/^(#{1,6})\s*(.+)$/);
+      if (!m) continue;
+      if (start < 0) {
+        if (m[1].length === groupLevel && m[2].trim() === group) start = i;
+      } else if (m[1].length <= groupLevel) { end = i; break; }
+    }
+  }
+
+  // 그룹이 없으면 노트 끝에 새 그룹으로 덧붙인다
+  if (start < 0) {
+    const body = lines.slice();
+    while (body.length && !body[body.length - 1].trim()) body.pop();
+    if (body.length) body.push('');
+    body.push((groupLevel ? '#'.repeat(groupLevel) + ' ' : '') + group, ...itemLines);
+    return { text: body.join(nl) + nl, replaced: false, newGroup: true };
+  }
+
+  // 같은 이름이 이미 있으면 그 좌표 줄만 교체
+  for (let i = start + 1; i < end; i++) {
+    const line = lines[i].trim();
+    if (!line || NOTE_COORD_RE.test(line)) continue;
+    if (line.replace(/^#{1,6}\s*/, '').trim() !== name) continue;
+    let j = i + 1;
+    while (j < end && !lines[j].trim()) j++;
+    if (j < end && NOTE_COORD_RE.test(lines[j].trim())) {
+      const out = lines.slice();
+      out[j] = coordLine;
+      return { text: out.join(nl), replaced: true, newGroup: false };
+    }
+  }
+
+  // 그룹 끝(뒤쪽 빈 줄 앞)에 삽입
+  let at = end;
+  while (at > start + 1 && !lines[at - 1].trim()) at--;
+  const out = lines.slice();
+  out.splice(at, 0, ...itemLines);
+  return { text: out.join(nl), replaced: false, newGroup: false };
+}
+
+async function addToNote() {
+  const c = parseLatLngText(document.getElementById('wCoords').value);
+  if (!c) { wSetStatus('먼저 좌표 칸을 "위도, 경도" 형식으로 채워 주세요.', 'info'); return; }
+
+  const name = document.getElementById('newName').value.trim();
+  if (!name) { wSetStatus('장소 이름을 입력해 주세요.', 'info'); return; }
+
+  const sel = document.getElementById('newGroup');
+  const group = sel.value === '__new__'
+    ? document.getElementById('newGroupName').value.trim()
+    : sel.value;
+  if (!group) { wSetStatus('그룹 이름을 입력해 주세요.', 'info'); return; }
+
+  // 파일에 직접 못 쓰는 브라우저 → 붙여넣을 수 있게 클립보드로
+  if (!window.showOpenFilePicker) {
+    const snippet = `#### ${name}\n${c.lat.toFixed(6)}, ${c.lng.toFixed(6)}`;
+    try {
+      await navigator.clipboard.writeText(snippet);
+      wSetStatus(`이 브라우저는 노트에 직접 쓸 수 없어 형식만 복사했습니다.\n"${group}" 그룹 아래에 붙여넣어 주세요.`, 'info');
+    } catch(e) {
+      wSetStatus('이 브라우저는 노트에 직접 쓸 수 없습니다. Chrome·Edge를 사용해 주세요.', 'err');
+    }
+    return;
+  }
+
+  try {
+    const handle = await getNoteHandle('readwrite');
+    const file = await handle.getFile();
+    const before = await file.text();           // 항상 최신 내용을 읽고 고친다
+    const r = insertIntoNote(before, group, name, c.lat, c.lng);
+
+    const w = await handle.createWritable();
+    await w.write(r.text);
+    await w.close();
+
+    applyPresetNote(r.text, file.name);         // 화면 목록도 즉시 갱신
+    // 방금 추가한 그룹·장소를 선택 상태로
+    const gi = COORD_PRESETS.findIndex(g => g.group === group);
+    if (gi >= 0) {
+      presetGroup = gi;
+      presetPick = COORD_PRESETS[gi].items.findIndex(it => it[0] === name);
+      renderPresets();
+    }
+    document.getElementById('newName').value = '';
+    document.getElementById('newGroupName').value = '';
+    wSetStatus(
+      r.replaced ? `"${name}"의 좌표를 노트에서 갱신했습니다.`
+                 : `노트에 추가했습니다 — ${group} / ${name}` + (r.newGroup ? ' (새 그룹)' : ''),
+      'ok');
+  } catch(e) {
+    if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) return;
+    wSetStatus('노트에 쓰지 못했습니다: ' + (e.message || e), 'err');
   }
 }
 
@@ -1158,6 +1320,8 @@ document.getElementById('presetFile').addEventListener('change', async e => {
 
 function pickPresetGroup(i) {
   presetGroup = i; presetPick = -1;
+  // 보고 있는 그룹이 '노트에 추가'의 기본 대상이 되도록 맞춰 준다
+  if (COORD_PRESETS[i]) document.getElementById('newGroup').value = COORD_PRESETS[i].group;
   renderPresets();
 }
 
@@ -1244,7 +1408,10 @@ async function readGps(f) {
   return { lat, lng };
 }
 
-function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 function renderFileList() {
   document.getElementById('fileList').innerHTML = wFilesSel.map((f, i) =>
