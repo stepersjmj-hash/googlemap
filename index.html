@@ -217,6 +217,42 @@ textarea:focus { border-color: var(--accent); }
 }
 .opt input { accent-color: var(--accent); }
 
+/* ── 자주 쓰는 좌표 ── */
+.preset-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.preset-tab {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--muted);
+  padding: 5px 14px;
+  border-radius: 16px;
+  font-size: 12px;
+}
+.preset-tab:hover { color: var(--text); background: var(--surface2); }
+.preset-tab.active {
+  background: var(--surface2);
+  border-color: var(--accent);
+  color: var(--accent-light);
+}
+.preset-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  padding: 7px 13px;
+  border-radius: var(--radius-sm);
+}
+.chip:hover { border-color: var(--accent); background: var(--info-bg); color: var(--accent-light); }
+.chip.active { background: var(--accent); border-color: transparent; color: #fff; }
+
 .btn-row {
   display: flex;
   gap: 8px;
@@ -541,6 +577,13 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
         추출기 결과 가져오기
       </button>
     </div>
+  </div>
+
+  <!-- 자주 쓰는 좌표 -->
+  <div class="card">
+    <div class="field-label">자주 쓰는 좌표</div>
+    <div class="preset-tabs" id="presetTabs"></div>
+    <div class="preset-chips" id="presetChips"></div>
   </div>
 
   <!-- 사진 카드 -->
@@ -921,6 +964,60 @@ function pullFromExtractor() {
   document.getElementById('wCoords').value = lat + ', ' + document.getElementById('lng').textContent;
   wSetStatus('추출기 결과를 가져왔습니다: ' + document.getElementById('wCoords').value, 'ok');
 }
+
+// ═══════════ 자주 쓰는 좌표 ═══════════
+const COORD_PRESETS = [
+  { group: '집·동네', items: [
+    ['오포3차',           37.359282, 127.149817],
+    ['라온',              37.357070, 127.149906],
+    ['보문동',            37.582341, 127.021501],
+  ]},
+  { group: '공원·나들이', items: [
+    ['에버랜드',          37.293983, 127.202588],
+    ['서울랜드',          37.434188, 127.020188],
+    ['율동공원',          37.377634, 127.151539],
+    ['중앙공원',          37.377250, 127.123762],
+    ['광주어린이체육센터', 37.373946, 127.177434],
+  ]},
+  { group: '쇼핑', items: [
+    ['현백판교',          37.392760, 127.112101],
+    ['롯데몰수지점',      37.313197, 127.081281],
+    ['이마트분당점',      37.358936, 127.119792],
+    ['이케아광명점',      37.424188, 126.882187],
+  ]},
+  { group: '여행·리조트', items: [
+    ['비발디파크',        37.648217, 127.684101],
+    ['인스파이어',        37.465889, 126.386882],
+    ['파라다이스시티',    37.437150, 126.455803],
+    ['가평 베고니아새정원', 37.684404, 127.525677],
+  ]},
+];
+
+let presetGroup = 0, presetPick = -1;
+
+function renderPresets() {
+  document.getElementById('presetTabs').innerHTML = COORD_PRESETS.map((g, i) =>
+    `<button class="preset-tab${i === presetGroup ? ' active' : ''}" onclick="pickPresetGroup(${i})">${escapeHtml(g.group)}</button>`
+  ).join('');
+  document.getElementById('presetChips').innerHTML = COORD_PRESETS[presetGroup].items.map((it, i) =>
+    `<button class="chip${i === presetPick ? ' active' : ''}" onclick="pickPreset(${i})" title="${it[1].toFixed(6)}, ${it[2].toFixed(6)}">${escapeHtml(it[0])}</button>`
+  ).join('');
+}
+
+function pickPresetGroup(i) {
+  presetGroup = i; presetPick = -1;
+  renderPresets();
+}
+
+function pickPreset(i) {
+  const [name, lat, lng] = COORD_PRESETS[presetGroup].items[i];
+  document.getElementById('wCoords').value = lat.toFixed(6) + ', ' + lng.toFixed(6);
+  presetPick = i;
+  renderPresets();
+  wSetStatus(`${name} 좌표를 입력했습니다: ${lat.toFixed(6)}, ${lng.toFixed(6)}`, 'ok');
+}
+
+renderPresets();
 
 // ═══════════ 좌표 입력기 (EXIF GPS) ═══════════
 let wFilesSel = [];
