@@ -9,8 +9,10 @@
 |------|------|
 | `index.html` | 앱 전체 (HTML+CSS+JS 한 파일). GitHub Pages 진입점이라 이름 고정 |
 | `cloudflare-worker.js` | 단축 URL 펼치기용 워커. 저장소에 보관만 하고, 배포는 Cloudflare 대시보드에 수동 붙여넣기 |
-| `start-server.bat` | 로컬 서버 실행 (Python→Node 자동 탐색, 포트 8000) |
+| `start-server.bat` | 로컬 서버 실행 (Python→Node 자동 탐색, 포트 8000). cmd 인코딩 때문에 ASCII 전용 |
 | `README.md` | 사용자 문서 |
+
+GitHub Pages는 `main` / `/(root)`로 이미 설정돼 있다. 다시 만질 일 없음.
 
 ## 배포
 
@@ -77,6 +79,13 @@ Cloudflare 대시보드 → 해당 워커 → Edit code → 전체 교체 → De
 - 좌표 정규식은 `(-?\d+(?:\.\d+)?)` 형태로 쓸 것. `\.?\d+`는 정수 좌표를 놓친다.
   값이 `0`인 좌표 때문에 `if (!lat)` 대신 `if (lat == null)`을 쓴다.
 - AI 검색 폴백은 제거됨(2026-08). 외부 API 의존 없음 — 다시 넣지 말 것.
+- **파일 접근 오류를 `AbortError`와 뭉뚱그려 삼키지 말 것.** 한때 `NotAllowedError`(권한 거부)까지
+  조용히 return 해서 "버튼을 눌러도 아무 반응이 없다"는 증상이 났다. 오류는 `fsErrorText()`로
+  풀어서 보여준다.
+- **상태 메시지는 누른 버튼 근처에 띄울 것.** 입력기 탭은 세로로 길어서, 아래 사진 카드의
+  `#wStatus`에만 쓰면 화면 밖이라 안 보인다. 자주 쓰는 좌표 카드는 `pSetStatus()`(`#presetStatus`)를 쓴다.
+- 노트는 네트워크 드라이브(UNC)에 있어 파일 선택 창 왼쪽 목록에 안 뜬다. 파일 이름 칸에
+  전체 경로를 붙여넣어야 한다.
 
 ## 관례
 
