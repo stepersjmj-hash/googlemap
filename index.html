@@ -201,7 +201,7 @@ textarea:focus { border-color: var(--accent); }
   border-bottom: 1px solid var(--border);
 }
 .fitem span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fstat { white-space: nowrap; flex-shrink: 0; }
+.fstat { white-space: nowrap; flex-shrink: 0; max-width: 58%; overflow: hidden; text-overflow: ellipsis; }
 .fstat.done { color: var(--success); }
 .fstat.skip { color: var(--muted); opacity: 0.7; }
 .fstat.fail { color: var(--danger); }
@@ -1627,7 +1627,49 @@ function renderFileList() {
 }
 function setFstat(i, txt, cls) {
   const el = document.getElementById('fstat' + i);
-  if (el) { el.textContent = txt; el.className = 'fstat ' + (cls || ''); }
+  if (el) { el.textContent = txt; el.title = txt; el.className = 'fstat ' + (cls || ''); }
+}
+
+// ── EXIF 보정 ────────────────────────────────────────────────────
+// piexif.load는 Ascii·Undefined 태그를 배열로 돌려줄 때가 있는데 dump는 문자열을 기대한다.
+// 그대로 두면 배열이 "12,34,..." 텍스트로 기록돼 값이 깨지고 크기도 폭증한다
+// (실측: MakerNote 38KB → 103KB → APP1 한계 초과 → insert가 'pack' error).
+const IFD_TABLE = { '0th': 'Image', 'Exif': 'Exif', 'GPS': 'GPS', 'Interop': 'Interop', '1st': 'Image' };
+
+function sanitizeExif(o) {
+  for (const [ifd, tbl] of Object.entries(IFD_TABLE)) {
+    const t = piexif.TAGS[tbl];
+    if (!o[ifd] || !t) continue;
+    for (const [tag, val] of Object.entries(o[ifd])) {
+      const type = t[tag] && t[tag].type;
+      if (type !== 'Ascii' && type !== 'Undefined') continue;   // 숫자형 배열은 그대로 둬야 한다
+      if (Array.isArray(val)) o[ifd][tag] = val.map(n => String.fromCharCode(n & 0xFF)).join('');
+      else if (typeof val === 'number') o[ifd][tag] = String.fromCharCode(val & 0xFF);
+    }
+  }
+  return o;
+}
+
+// EXIF는 JPEG APP1 세그먼트 하나에 들어가야 한다. 넘치면 부피 큰 것부터 덜어낸다.
+const EXIF_LIMIT = 65533;
+
+function dumpExifFitting(exifObj) {
+  let bytes = piexif.dump(exifObj);
+  if (bytes.length <= EXIF_LIMIT) return bytes;
+
+  const c = { '0th': Object.assign({}, exifObj['0th']), 'Exif': Object.assign({}, exifObj['Exif']),
+              'GPS': Object.assign({}, exifObj['GPS']), 'Interop': Object.assign({}, exifObj['Interop']),
+              '1st': Object.assign({}, exifObj['1st']), 'thumbnail': exifObj['thumbnail'] };
+  delete c.Exif[piexif.ExifIFD.MakerNote];
+  bytes = piexif.dump(c);
+  if (bytes.length <= EXIF_LIMIT) return bytes;
+
+  c['1st'] = {}; c.thumbnail = null;
+  bytes = piexif.dump(c);
+  if (bytes.length <= EXIF_LIMIT) return bytes;
+
+  return piexif.dump({ '0th': {}, 'Exif': {}, 'GPS': Object.assign({}, exifObj['GPS']),
+                       '1st': {}, 'thumbnail': null });
 }
 
 // ArrayBuffer ↔ 바이너리 문자열 (piexif 입출력 형식)
@@ -1686,13 +1728,13 @@ async function processPhotos(mode) {
       if (!(u8[0] === 0xFF && u8[1] === 0xD8)) { skip++; setFstat(i, 'JPEG 아님 · 건너뜀', 'skip'); continue; }
       const bin = bufToBinStr(buf);
       let exifObj;
-      try { exifObj = piexif.load(bin); }
+      try { exifObj = sanitizeExif(piexif.load(bin)); }
       catch (e) { exifObj = { '0th': {}, 'Exif': {}, 'GPS': {}, '1st': {}, 'thumbnail': null }; }
       if (skipGps && exifObj.GPS && exifObj.GPS[piexif.GPSIFD.GPSLatitude]) {
         skip++; setFstat(i, 'GPS 있음 · 건너뜀', 'skip'); continue;
       }
       exifObj.GPS = Object.assign({}, exifObj.GPS, gpsIfd);
-      const out = piexif.insert(piexif.dump(exifObj), bin);
+      const out = piexif.insert(dumpExifFitting(exifObj), bin);
       const blob = binStrToBlob(out);
       const name = outName(f.name);
       if (dirHandle) {

@@ -79,6 +79,14 @@ Cloudflare 대시보드 → 해당 워커 → Edit code → 전체 교체 → De
 - 좌표 정규식은 `(-?\d+(?:\.\d+)?)` 형태로 쓸 것. `\.?\d+`는 정수 좌표를 놓친다.
   값이 `0`인 좌표 때문에 `if (!lat)` 대신 `if (lat == null)`을 쓴다.
 - AI 검색 폴백은 제거됨(2026-08). 외부 API 의존 없음 — 다시 넣지 말 것.
+- **piexif의 `load` 결과를 그대로 `dump`에 넘기지 말 것 — `sanitizeExif()`를 반드시 거친다.**
+  `load`는 Ascii·Undefined 태그(MakerNote, PrintImageMatching, UserComment, FileSource…)를
+  숫자 **배열**로 돌려주는데 `dump`는 문자열을 기대한다. 그대로 넘기면 배열이 `"12,34,..."`
+  텍스트로 기록돼 값이 깨지고 크기가 폭증한다(실측 MakerNote 38KB → 103KB).
+  EXIF는 JPEG APP1 한 세그먼트(최대 65533B)에 들어가야 해서, 넘치면 `insert`가
+  `'pack' error.`를 던진다 — 소니 ILCE-7CM2 사진 234장이 전부 이 이유로 실패했다.
+  숫자형(Byte·Rational 등) 배열은 배열이 정상이므로 타입을 보고 변환 대상을 가려야 한다.
+  그래도 넘치는 경우를 위해 `dumpExifFitting()`이 MakerNote → 썸네일 → GPS만 순으로 덜어낸다.
 - **파일 접근 오류를 `AbortError`와 뭉뚱그려 삼키지 말 것.** 한때 `NotAllowedError`(권한 거부)까지
   조용히 return 해서 "버튼을 눌러도 아무 반응이 없다"는 증상이 났다. 오류는 `fsErrorText()`로
   풀어서 보여준다.
