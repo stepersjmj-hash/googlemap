@@ -8,7 +8,8 @@
 | 파일 | 역할 |
 |------|------|
 | `index.html` | 앱 전체 (HTML+CSS+JS 한 파일). GitHub Pages 진입점이라 이름 고정 |
-| `cloudflare-worker.js` | 단축 URL 펼치기용 워커. 저장소에 보관만 하고, 배포는 Cloudflare 대시보드에 수동 붙여넣기 |
+| `cloudflare-worker.js` | 단축 URL 펼치기용 워커. `npx wrangler deploy`로 배포(아래) |
+| `wrangler.toml` | 워커 배포 설정(이름 `maps-expander`, 진입점). 비밀값 없음 |
 | `start-server.bat` | 로컬 서버 실행 (Python→Node 자동 탐색, 포트 8000). cmd 인코딩 때문에 ASCII 전용 |
 | `README.md` | 사용자 문서 |
 
@@ -26,7 +27,13 @@ git checkout main && git merge --ff-only feature && git push origin main && git 
 ```
 
 **워커** — `cloudflare-worker.js`를 고쳤으면 별도로 배포해야 반영된다.
-Cloudflare 대시보드 → 해당 워커 → Edit code → 전체 교체 → Deploy. (wrangler 미설정)
+
+```bash
+npx wrangler deploy
+```
+
+최초 1회(또는 새 PC)에서는 `npx wrangler login`으로 브라우저 OAuth 승인이 필요하다.
+wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code → 붙여넣기 → Deploy 해도 결과는 같다.
 
 ## 구조 메모
 

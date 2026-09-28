@@ -190,6 +190,13 @@ Cloudflare Worker가 그 역할을 합니다.
 5. 발급된 주소(`https://maps-expander.<계정>.workers.dev`)를 복사
 6. 앱의 **Worker 주소** 칸에 붙여넣기 (브라우저에 저장됨)
 
+Node가 있다면 대시보드 대신 명령 한 줄로도 배포할 수 있습니다(저장소의 `wrangler.toml` 사용):
+
+```
+npx wrangler login    # 최초 1회, 브라우저에서 승인
+npx wrangler deploy
+```
+
 ### 동작 확인
 브라우저 주소창에서 직접 호출해 볼 수 있습니다:
 
