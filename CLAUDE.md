@@ -76,6 +76,14 @@ Cloudflare 대시보드 → 해당 워커 → Edit code → 전체 교체 → De
   그래서 Worker 응답에도 좌표 파싱만이 아니라 Plus Code 디코딩까지 돌려야 한다.
 - 구글이 `consent.google.com`으로 리다이렉트하면 좌표가 없다. 워커가 동의 쿠키를 실어 보내고,
   걸리면 `continue=` 파라미터를 따라 재시도한다.
+- **구글이 Cloudflare IP를 봇으로 보고 `google.com/sorry/`(reCAPTCHA)로 보내는 일이 간헐적으로 있다.**
+  다시 요청해도 또 걸리므로 워커는 리다이렉트를 `redirect:'manual'`로 한 단계씩 따라가고,
+  sorry 페이지를 만나면 그 `continue=` 목적지를 `finalUrl`로 돌려주고 멈춘다(`blocked:true`).
+  단축 URL의 첫 302 목적지(`/maps/place/이름/data=...!20s<PlusCode>`)에 이미 Plus Code가 있어 그걸로 충분하다.
+  앱 쪽도 `deepDecode()`로 이중 인코딩(`%252B`)을 끝까지 풀어, 옛 워커가 sorry URL을 그대로 줘도 읽는다.
+- Plus Code 추출 정규식에 `\b`를 쓰지 말 것. `!20s8Q9987RQ+GM48JF2`처럼 앞에 `s`가 붙으면 단어 경계가
+  없어 놓친다. 코드 문자가 아닌 글자를 경계로 삼는 lookbehind/lookahead를 쓰고, 뒷자리는 15자리 코드까지
+  (`+` 뒤 최대 7자) 허용한다. `OLC.decode()`는 10자리 넘는 격자 부분도 처리한다.
 - 좌표 정규식은 `(-?\d+(?:\.\d+)?)` 형태로 쓸 것. `\.?\d+`는 정수 좌표를 놓친다.
   값이 `0`인 좌표 때문에 `if (!lat)` 대신 `if (lat == null)`을 쓴다.
 - AI 검색 폴백은 제거됨(2026-08). 외부 API 의존 없음 — 다시 넣지 말 것.

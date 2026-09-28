@@ -211,6 +211,8 @@ https://<당신워커>.workers.dev/?url=https://maps.app.goo.gl/<실제코드>
 **"단축 URL은 펼쳤지만 좌표를 찾지 못했습니다"**
 펼친 URL 안의 좌표/Plus Code를 못 읽은 경우입니다. 페이지를 **강력 새로고침**(`Ctrl+Shift+R`)한 뒤 다시 시도하세요.
 그래도 안 되면 위 [동작 확인](#동작-확인)으로 `finalUrl` 값을 확인하세요.
+`finalUrl`이 `google.com/sorry/...`로 시작하면 구글의 봇 확인 페이지에 걸린 것입니다.
+워커 코드가 오래된 버전일 수 있으니 [`cloudflare-worker.js`](cloudflare-worker.js)를 다시 붙여넣어 배포하세요.
 
 **Worker가 `{"error":"url 파라미터가 필요합니다."}` 반환**
 워커를 `?url=...` 없이 호출했기 때문입니다. 반드시 `워커주소/?url=단축URL` 형태로 호출하세요.

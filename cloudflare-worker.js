@@ -3,7 +3,8 @@
  * ────────────────────────────────────────────────
  * maps.app.goo.gl 같은 단축 URL을 받아 리다이렉트를 따라가
  * 좌표가 들어 있는 최종 URL과 본문 일부를 돌려줍니다.
- * 구글의 쿠키 동의(consent) 페이지는 자동으로 우회합니다.
+ * 구글의 쿠키 동의(consent) 페이지는 자동으로 우회하고,
+ * 봇 확인(/sorry/) 페이지에 걸리면 그 직전 목적지 URL을 돌려줍니다.
  *
  * 배포 방법:
  *  1) https://dash.cloudflare.com → Workers & Pages → Create → Start with Hello World!
@@ -34,7 +35,7 @@ export default {
     }
 
     try {
-      const r = await expand(target, 0);
+      const r = await expand(target);
       return json(r, 200, cors);
     } catch (e) {
       return json({ error: '펼치기 실패: ' + String(e) }, 502, cors);
@@ -42,35 +43,55 @@ export default {
   },
 };
 
-// 리다이렉트를 따라가되, 구글 동의 페이지를 만나면 continue= 목표로 점프
-async function expand(url, depth) {
-  const resp = await fetch(url, {
-    redirect: 'follow',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-      'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
-      // 쿠키 동의 페이지 우회용 쿠키
-      'Cookie': 'CONSENT=YES+cb.20210720-07-p0.en+FX+410; SOCS=CAESEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg',
-    },
-  });
-  const finalUrl = resp.url;
-  const body = (await resp.text()).slice(0, 400000);
+// 리다이렉트를 한 단계씩 직접 따라간다.
+// 구글이 봇 확인(/sorry/)이나 동의(consent) 페이지로 보내면 그 안의 continue= 목적지를 꺼낸다.
+//  - 동의 페이지: 쿠키를 실어 continue 목적지로 계속 진행
+//  - 봇 확인 페이지: 다시 요청해도 또 걸리므로 continue 목적지를 최종 URL로 삼고 멈춘다
+//    (단축 URL의 첫 리다이렉트 목적지에 이미 Plus Code(!20s…)가 들어 있어 좌표 추출에 충분)
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+  'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+  // 쿠키 동의 페이지 우회용 쿠키
+  'Cookie': 'CONSENT=YES+cb.20210720-07-p0.en+FX+410; SOCS=CAESEwgDEgk0ODE3Nzk3MjQaAmVuIAEaBgiA_LyaBg',
+};
+const MAX_HOPS = 10;
 
-  // 동의 페이지에 걸렸으면 그 안의 실제 목적지(continue=)로 한 번 더 진행
-  if (depth < 3 && /consent\.(google|youtube)\./i.test(finalUrl)) {
-    let cont = null;
-    try { cont = new URL(finalUrl).searchParams.get('continue'); } catch {}
-    if (!cont) {
+function continueTarget(url) {
+  let cont = null;
+  try { cont = new URL(url).searchParams.get('continue'); } catch {}
+  return cont && /^https?:\/\//i.test(cont) ? cont : null;
+}
+const isConsent = u => /^https?:\/\/consent\.(google|youtube)\./i.test(u);
+const isSorry   = u => /^https?:\/\/(www\.)?google\.[a-z.]+\/sorry\//i.test(u);
+
+async function expand(url) {
+  let cur = url, viaConsent = false, consentUrl = null;
+  for (let hop = 0; hop < MAX_HOPS; hop++) {
+    if (isSorry(cur)) {
+      const cont = continueTarget(cur);
+      return { finalUrl: cont || cur, body: '', blocked: true, blockedUrl: cur, viaConsent, consentUrl };
+    }
+    if (isConsent(cur)) {
+      const cont = continueTarget(cur);
+      if (cont) { viaConsent = true; consentUrl = cur; cur = cont; continue; }
+    }
+    const resp = await fetch(cur, { redirect: 'manual', headers: HEADERS });
+    const loc = resp.headers.get('location');
+    if (resp.status >= 300 && resp.status < 400 && loc) {
+      cur = new URL(loc, cur).href;
+      continue;
+    }
+    let body = (await resp.text()).slice(0, 400000);
+    // 리다이렉트 없이 본문에서 동의 페이지로 넘기는 경우
+    if (isConsent(resp.url || cur)) {
       const m = body.match(/continue=([^"'&\\\s]+)/);
+      let cont = null;
       if (m) { try { cont = decodeURIComponent(m[1]); } catch { cont = m[1]; } }
+      if (cont && /^https?:\/\//i.test(cont)) { viaConsent = true; consentUrl = cur; cur = cont; continue; }
     }
-    if (cont && /^https?:\/\//i.test(cont)) {
-      const next = await expand(cont, depth + 1);
-      // 다음 단계의 결과를 쓰되, 동의 우회 경로였음을 표시
-      return { finalUrl: next.finalUrl, body: next.body, viaConsent: true, consentUrl: finalUrl };
-    }
+    return { finalUrl: resp.url || cur, body, viaConsent, consentUrl };
   }
-  return { finalUrl, body };
+  return { finalUrl: cur, body: '', error: '리다이렉트가 너무 많습니다.' };
 }
 
 function json(obj, status, cors) {

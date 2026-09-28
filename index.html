@@ -782,7 +782,9 @@ const OLC = (() => {
     return encode(lat, lng2, Math.min(codeLen, PAIR_LEN));
   }
   function extractFromText(text) {
-    const re = /\b([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,6})\b/gi;
+    // \b를 쓰면 `!20s8Q9987RQ+GM48JF2`처럼 앞에 다른 글자가 붙은 경우를 놓친다.
+    // 코드 문자(ALPHA)가 아닌 글자를 경계로 삼고, 뒷자리는 15자리 코드까지(최대 7자) 허용.
+    const re = /(?<![23456789CFGHJMPQRVWX])([23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,7})(?![23456789CFGHJMPQRVWX])/gi;
     const m = text.match(re);
     return m ? [...new Set(m.map(x=>x.toUpperCase()))] : [];
   }
@@ -826,10 +828,23 @@ function getRefCoords(text) {
   return {lat:37.5665, lng:126.9780, city:'서울(기본값)'};
 }
 
+// ── URL 디코딩 ───────────────────────────────────────────────────
+// 봇 확인·동의 페이지의 continue= 안에 든 URL은 이중 인코딩(%252B)돼 있어
+// 한 번 풀어서는 안 나온다. 더 이상 변하지 않을 때까지(최대 3회) 푼다.
+function deepDecode(text) {
+  let cur = text;
+  for (let i = 0; i < 3; i++) {
+    let next;
+    try { next = decodeURIComponent(cur); } catch(e) { break; }
+    if (next === cur) break;
+    cur = next;
+  }
+  return cur;
+}
+
 // ── 좌표 직접 추출 ────────────────────────────────────────────────
 function extractCoords(url) {
-  let u;
-  try { u = decodeURIComponent(url); } catch(e) { u = url; }
+  const u = deepDecode(url);
   let m, lat, lng, zoom, pattern;
   m=u.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(\d+(?:\.\d+)?)z/i); if(m){lat=+m[1];lng=+m[2];zoom=m[3];pattern='@lat,lng,Zz'}
   if(lat==null){m=u.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i);if(m){lat=+m[1];lng=+m[2];pattern='q=lat,lng'}}
@@ -899,8 +914,7 @@ function tryExtractAll(text) {
   }
 
   // 2) Plus Code 감지·디코딩
-  let decoded;
-  try { decoded = decodeURIComponent(text); } catch(e) { decoded = text; }
+  const decoded = deepDecode(text);
   const plusCodes = OLC.extractFromText(decoded);
   if (plusCodes.length > 0) {
     const plusCode = plusCodes[0];
