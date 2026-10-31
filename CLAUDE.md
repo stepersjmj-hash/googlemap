@@ -1,6 +1,6 @@
 # CLAUDE.md — 지도 좌표 도구
 
-구글 지도 URL에서 좌표를 추출하고, 사진 EXIF에 GPS를 기록하는 **단일 파일 웹앱**.
+구글 지도 URL에서 좌표를 추출하고, 사진 EXIF에 GPS를 기록하고, 고른 사진에 맞춰 원본 폴더를 정리하는 **단일 파일 웹앱**.
 사용자용 문서는 [README.md](README.md), 이 문서는 작업 이어가기용 메모.
 
 ## 파일 구성
@@ -37,7 +37,13 @@ wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code →
 
 ## 구조 메모
 
-- 탭 2개: `#tab-extractor` / `#tab-writer`, `switchTab()`으로 전환.
+- 탭 3개: `#tab-extractor` / `#tab-writer` / `#tab-sync`. `TABS` 테이블을 `switchTab()`이 돌며 전환하므로
+  탭을 더 붙일 때는 `<main id="tab-이름">` + `#tabBtn이름` 버튼 + `TABS` 항목 하나면 된다.
+- **폴더 동기화**(`#tab-sync`): `showDirectoryPicker`로 폴더1(`read`)·폴더2(`readwrite`) 핸들을 `syncDirs`에 들고,
+  `listMedia()` → `syncKey()`(미디어 확장자만, 옵션에 따라 확장자·`_gps` 접미사 제거, 소문자)로 키를 만들어
+  `compareSync()`가 폴더2에만 있는 이름을 `syncPlan`에 둔다. `runSyncDelete()`는 그 목록만 `removeEntry()`.
+  옵션·폴더가 바뀌면 `syncInvalidate()`로 `syncPlan`을 버려 옛 목록으로 지우는 일을 막는다.
+  기준 폴더가 비었거나 두 폴더가 같으면(`isSameEntry`) 진행하지 않는다. 하위 폴더는 안 본다.
 - **추출 순서**: 직접 좌표 파싱 → Plus Code 디코딩 → Worker로 단축 URL 펼치기.
   앞의 두 단계는 `tryExtractAll()` 하나로 묶여 있고, 원본 입력과 Worker가 펼친 URL 양쪽에 같은 함수를 적용한다.
 - OLC(Plus Code)는 외부 라이브러리 없이 자체 구현. 단축 코드는 URL 속 도시명(`CITIES` 테이블)을 기준점으로 복원.
