@@ -62,6 +62,10 @@ wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code →
 - OLC(Plus Code)는 외부 라이브러리 없이 자체 구현. 단축 코드는 URL 속 도시명(`CITIES` 테이블)을 기준점으로 복원.
 - EXIF 쓰기는 piexifjs, ZIP은 JSZip — 둘 다 CDN. 재압축 없이 메타데이터만 삽입해 화질 무손실.
 - 저장은 File System Access API(폴더 직접 저장, Chrome·Edge) / JSZip(폴백) 두 갈래.
+  `_gps` 접미사 옵션은 기본 꺼짐(2026-11) — 같은 폴더를 고르면 원본을 덮어쓰는 흐름이 기본이다.
+- 입력기 드롭존은 파일뿐 아니라 폴더째 드롭도 받는다. `webkitGetAsEntry()`(드롭 직후 동기적으로 모을 것)로
+  바로 아래 파일만 읽고(`readDirEntryFiles`, `readEntries`는 빈 배열까지 반복), 하위 폴더는 안 본다.
+  동기화 탭의 `getAsFileSystemHandle()`과 달리 파일 핸들이 아니라 File 객체만 필요해서 더 넓게 지원되는 쪽을 썼다.
 - Worker 주소는 localStorage(`maps_worker_url`)에 저장. 앱에 하드코딩하지 않음.
 
 ## 데이터 소스

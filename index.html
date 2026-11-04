@@ -716,11 +716,11 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
   <!-- 사진 카드 -->
   <div class="card">
     <div class="field-label">사진 선택 (JPEG · 여러 장 가능)</div>
-    <div class="dropzone" id="dropzone">사진을 여기로 끌어다 놓거나 클릭해서 선택하세요</div>
+    <div class="dropzone" id="dropzone">사진이나 사진 폴더를 여기로 끌어다 놓거나, 클릭해서 선택하세요</div>
     <input type="file" id="wFiles" accept=".jpg,.jpeg,image/jpeg" multiple style="display:none">
     <div class="filelist" id="fileList"></div>
     <label class="opt"><input type="checkbox" id="optSkipGps"> 이미 GPS가 있는 사진은 건너뛰기</label>
-    <label class="opt"><input type="checkbox" id="optSuffix" checked> 파일명 뒤에 _gps 붙이기</label>
+    <label class="opt"><input type="checkbox" id="optSuffix"> 파일명 뒤에 _gps 붙이기 (끄면 같은 이름으로 저장 → 같은 폴더를 고르면 원본을 덮어씀)</label>
     <div class="btn-row">
       <button class="btn-primary" onclick="processPhotos('folder')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
@@ -1704,18 +1704,46 @@ const wFilesInput = document.getElementById('wFiles');
 dz.addEventListener('click', () => wFilesInput.click());
 dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
 dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
-dz.addEventListener('drop', e => {
+// 탐색기에서 사진 여러 장이든 폴더째든 끌어다 놓을 수 있다.
+// 폴더는 webkitGetAsEntry()로 바로 아래 파일만 읽는다(하위 폴더 제외). 드롭 직후 동기적으로 entry를 모아야 한다.
+dz.addEventListener('drop', async e => {
   e.preventDefault(); dz.classList.remove('drag');
-  setWriterFiles([...e.dataTransfer.files]);
+  const entries = [...(e.dataTransfer.items || [])].map(it => it.webkitGetAsEntry ? it.webkitGetAsEntry() : null);
+  if (!entries.some(en => en && en.isDirectory)) { setWriterFiles([...e.dataTransfer.files]); return; }
+  wSetStatus('폴더를 읽는 중...', 'loading');
+  const files = []; let folders = 0;
+  try {
+    for (const en of entries) {
+      if (!en) continue;
+      if (en.isDirectory) { folders++; files.push(...await readDirEntryFiles(en)); }
+      else if (en.isFile) files.push(await entryToFile(en));
+    }
+  } catch (err) { wSetStatus('폴더를 읽지 못했습니다: ' + fsErrorText(err), 'err'); return; }
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  setWriterFiles(files, folders);
 });
 wFilesInput.addEventListener('change', () => setWriterFiles([...wFilesInput.files]));
 
-function setWriterFiles(files) {
+const entryToFile = en => new Promise((res, rej) => en.file(res, rej));
+async function readDirEntryFiles(dirEntry) {
+  const reader = dirEntry.createReader();
+  const all = [];
+  for (;;) {   // readEntries는 한 번에 일부(크롬은 100개)만 주므로 빈 배열이 올 때까지 반복
+    const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+    if (!batch.length) break;
+    all.push(...batch);
+  }
+  const files = [];
+  for (const en of all) if (en.isFile) files.push(await entryToFile(en));
+  return files;
+}
+
+function setWriterFiles(files, folders) {
   wFilesSel = files.filter(f => /\.jpe?g$/i.test(f.name) || f.type === 'image/jpeg');
   const dropped = files.length - wFilesSel.length;
   renderFileList();
-  if (files.length)
-    wSetStatus(`${wFilesSel.length}장 선택됨` + (dropped ? ` (JPEG 아닌 ${dropped}개 제외)` : ''),
+  if (files.length || folders)
+    wSetStatus(`${wFilesSel.length}장 선택됨` + (folders ? ` (폴더 ${folders}개에서)` : '') + (dropped ? ` (JPEG 아닌 ${dropped}개 제외)` : ''),
       wFilesSel.length ? 'info' : 'err');
   scanGpsInfo();
 }
