@@ -341,6 +341,11 @@ button:active { transform: scale(0.97); }
 .folder-box:hover { border-color: var(--accent); }
 .folder-box.set { border-style: solid; border-color: var(--accent); }
 .folder-box.drag { border-style: solid; border-color: var(--accent); background: var(--accent-glow); }
+.folder-box.role-ref { border-color: var(--success); }
+.folder-box.role-target { border-color: var(--danger); }
+.fb-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.fb-badge.ref { background: var(--success-bg); color: var(--success); }
+.fb-badge.target { background: var(--danger-bg); color: var(--danger); }
 /* 삭제 예정 목록: 썸네일 + 클릭 미리보기 */
 .sync-item { align-items: center; cursor: pointer; padding: 4px 6px; }
 .sync-item:hover { background: var(--surface2); }
@@ -365,7 +370,8 @@ button:active { transform: scale(0.97); }
 .lb-cap small { color: var(--muted); display: block; margin-top: 2px; font-family: var(--sans); }
 .lb-media img { cursor: zoom-out; }
 .lb-nav {
-  position: fixed; top: 50%; transform: translateY(-50%); z-index: 1001;
+  /* 세로 중앙은 top으로 맞춘다 — transform을 쓰면 전역 button:active { transform: scale } 에 덮여 누를 때 튄다 */
+  position: fixed; top: calc(50% - 32px); z-index: 1001;
   width: 44px; height: 64px; border: none; border-radius: 8px; cursor: pointer;
   background: rgba(255,255,255,0.12); color: #fff; font-size: 28px; line-height: 1;
   display: flex; align-items: center; justify-content: center; transition: background 0.15s;
@@ -373,7 +379,7 @@ button:active { transform: scale(0.97); }
 .lb-nav:hover { background: rgba(255,255,255,0.28); }
 .lb-nav.prev { left: 12px; }
 .lb-nav.next { right: 12px; }
-@media (max-width: 560px) { .lb-nav { width: 36px; height: 52px; font-size: 22px; } }
+@media (max-width: 560px) { .lb-nav { width: 36px; height: 52px; font-size: 22px; top: calc(50% - 26px); } }
 .folder-box .fb-role { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .folder-box .fb-name { font-size: 14px; font-weight: 600; margin-top: 4px; word-break: break-all; }
 .folder-box .fb-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -751,19 +757,20 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
   <div class="card">
     <div class="field-label">폴더 선택 <span style="text-transform:none;font-weight:400">(Chrome·Edge · 하위 폴더는 보지 않습니다)</span></div>
     <div class="folder-grid">
-      <div class="folder-box" id="sBoxRef" onclick="pickSyncDir('ref')"
-           ondragover="syncDragOver(event,'ref')" ondragleave="syncDragLeave('ref')" ondrop="dropSyncDir(event,'ref')">
-        <div class="fb-role">폴더1 · 최종 (기준)</div>
-        <div class="fb-name" id="sNameRef">클릭 선택 · 탐색기에서 끌어다 놓기</div>
-        <div class="fb-meta" id="sMetaRef">여기 있는 파일은 남깁니다</div>
+      <div class="folder-box" id="sBoxA" onclick="pickSyncDir('a')"
+           ondragover="syncDragOver(event,'a')" ondragleave="syncDragLeave('a')" ondrop="dropSyncDir(event,'a')">
+        <div class="fb-role" id="sRoleA">폴더 A</div>
+        <div class="fb-name" id="sNameA">클릭 선택 · 탐색기에서 끌어다 놓기</div>
+        <div class="fb-meta" id="sMetaA">순서는 상관없습니다</div>
       </div>
-      <div class="folder-box" id="sBoxTarget" onclick="pickSyncDir('target')"
-           ondragover="syncDragOver(event,'target')" ondragleave="syncDragLeave('target')" ondrop="dropSyncDir(event,'target')">
-        <div class="fb-role">폴더2 · 변경 (정리 대상)</div>
-        <div class="fb-name" id="sNameTarget">클릭 선택 · 탐색기에서 끌어다 놓기</div>
-        <div class="fb-meta" id="sMetaTarget">폴더1에 없는 파일을 여기서 지웁니다</div>
+      <div class="folder-box" id="sBoxB" onclick="pickSyncDir('b')"
+           ondragover="syncDragOver(event,'b')" ondragleave="syncDragLeave('b')" ondrop="dropSyncDir(event,'b')">
+        <div class="fb-role" id="sRoleB">폴더 B</div>
+        <div class="fb-name" id="sNameB">클릭 선택 · 탐색기에서 끌어다 놓기</div>
+        <div class="fb-meta" id="sMetaB">순서는 상관없습니다</div>
       </div>
     </div>
+    <div class="fb-meta" style="margin-top:6px">비교하면 미디어 파일이 <b>적은 쪽이 최종(기준)</b>, <b>많은 쪽이 원본(정리 대상)</b>이 됩니다. 원본에서 최종에 없는 파일을 지웁니다.</div>
     <label class="opt"><input type="checkbox" id="sOptIgnoreExt" checked onchange="syncInvalidate()"> 확장자 무시 — 이름만 같으면 같은 파일로 봅니다 (JPG로 고른 뒤 RAW 정리할 때)</label>
     <label class="opt"><input type="checkbox" id="sOptIgnoreGps" checked onchange="syncInvalidate()"> 파일명 끝의 _gps 무시</label>
     <div class="btn-row">
@@ -773,7 +780,7 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
       </button>
       <button class="btn-danger" id="sDeleteBtn" onclick="runSyncDelete()" disabled>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-        폴더2에서 삭제
+        <span id="sDeleteLabel">원본에서 삭제</span>
       </button>
     </div>
     <div class="status" id="sStatus"></div>
@@ -786,7 +793,7 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
     <div class="guide-title">안내</div>
     <div class="guide-item">
       <span class="guide-tag">동작</span>
-      <span class="guide-desc">두 폴더의 미디어 파일(사진·RAW·동영상) 이름을 비교해, 폴더1에 없는 파일을 폴더2에서 지웁니다. 폴더1은 읽기만 합니다.</span>
+      <span class="guide-desc">두 폴더의 미디어 파일(사진·RAW·동영상) 이름을 비교합니다. 파일이 적은 쪽이 최종(기준), 많은 쪽이 원본이 되어, 원본에서 최종에 없는 파일을 지웁니다. 최종 폴더는 읽기만 합니다.</span>
     </div>
     <div class="guide-item">
       <span class="guide-tag">주의</span>
@@ -1897,14 +1904,17 @@ async function processPhotos(mode) {
 }
 
 // ═══════════ 폴더 동기화 ═══════════
-// 폴더1(기준)에 없는 미디어 파일을 폴더2에서 지운다. 이름만 비교하며 폴더1은 읽기 전용.
+// 두 폴더(A·B) 중 미디어 파일이 적은 쪽을 최종(기준), 많은 쪽을 원본(정리 대상)으로 삼아
+// 원본에서 최종에 없는 파일을 지운다. 이름만 비교하며 최종 폴더는 읽기 전용.
 const MEDIA_EXT = new Set([
   'jpg','jpeg','png','gif','webp','heic','heif','bmp','tif','tiff','avif',
   'arw','cr2','cr3','nef','dng','orf','rw2','raf','pef','srw','raw',
   'mp4','mov','avi','mkv','m4v','mts','m2ts','wmv','3gp','webm','mpg','mpeg',
 ]);
-const syncDirs = { ref: null, target: null };   // DirectoryHandle
+const syncDirs = { a: null, b: null };          // DirectoryHandle
+let syncRole = null;                            // compareSync()가 정함: { ref: 'a'|'b', target: 'a'|'b' }
 let syncPlan = null;                            // compareSync() 결과: 지울 파일 이름 배열
+const syncTargetDir = () => syncRole ? syncDirs[syncRole.target] : null;
 
 function sSetStatus(msg, type) {
   const el = document.getElementById('sStatus');
@@ -1916,9 +1926,26 @@ function sSetStatus(msg, type) {
 // 옵션이나 폴더가 바뀌면 이전 비교 결과는 버린다 (옛 목록으로 삭제하는 걸 막기 위해)
 function syncInvalidate() {
   syncPlan = null;
+  syncRole = null;
   clearSyncThumbs();
   document.getElementById('sDeleteBtn').disabled = true;
+  document.getElementById('sDeleteLabel').textContent = '원본에서 삭제';
   document.getElementById('sList').innerHTML = '';
+  for (const k of ['a', 'b']) {
+    const box = document.getElementById(k === 'a' ? 'sBoxA' : 'sBoxB');
+    box.classList.remove('role-ref', 'role-target');
+    document.getElementById(k === 'a' ? 'sRoleA' : 'sRoleB').textContent = k === 'a' ? '폴더 A' : '폴더 B';
+  }
+}
+// 비교 뒤 두 칸에 최종/원본 역할을 표시
+function showSyncRoles() {
+  for (const k of ['a', 'b']) {
+    const isRef = syncRole.ref === k;
+    const box = document.getElementById(k === 'a' ? 'sBoxA' : 'sBoxB');
+    box.classList.add(isRef ? 'role-ref' : 'role-target');
+    document.getElementById(k === 'a' ? 'sRoleA' : 'sRoleB').innerHTML =
+      (k === 'a' ? '폴더 A' : '폴더 B') + (isRef ? '<span class="fb-badge ref">최종 · 기준</span>' : '<span class="fb-badge target">원본 · 정리 대상</span>');
+  }
 }
 
 // 비교용 키. 미디어 파일이 아니면 null.
@@ -1952,8 +1979,8 @@ async function pickSyncDir(which) {
   }
   let handle;
   try {
-    // 폴더1은 읽기만, 폴더2는 지워야 하므로 쓰기 권한
-    handle = await window.showDirectoryPicker({ mode: which === 'target' ? 'readwrite' : 'read' });
+    // 어느 쪽을 지울지는 비교 뒤에 정해지므로 지금은 읽기만. 쓰기 권한은 runSyncDelete()가 요청
+    handle = await window.showDirectoryPicker({ mode: 'read' });
   } catch (e) {
     if (e && e.name === 'AbortError') return;
     sSetStatus('폴더를 열지 못했습니다: ' + fsErrorText(e), 'err');
@@ -1963,14 +1990,14 @@ async function pickSyncDir(which) {
 }
 
 // 탐색기에서 폴더를 끌어다 놓기. 드롭된 핸들은 읽기 권한만 딸려 오고,
-// 폴더2의 쓰기 권한은 삭제 버튼을 누를 때 runSyncDelete()가 따로 요청한다.
+// 원본 폴더의 쓰기 권한은 삭제 버튼을 누를 때 runSyncDelete()가 따로 요청한다.
 function syncDragOver(ev, which) {
   ev.preventDefault();
   ev.dataTransfer.dropEffect = 'link';
-  document.getElementById(which === 'ref' ? 'sBoxRef' : 'sBoxTarget').classList.add('drag');
+  document.getElementById(which === 'a' ? 'sBoxA' : 'sBoxB').classList.add('drag');
 }
 function syncDragLeave(which) {
-  document.getElementById(which === 'ref' ? 'sBoxRef' : 'sBoxTarget').classList.remove('drag');
+  document.getElementById(which === 'a' ? 'sBoxA' : 'sBoxB').classList.remove('drag');
 }
 async function dropSyncDir(ev, which) {
   ev.preventDefault();
@@ -1991,7 +2018,7 @@ async function dropSyncDir(ev, which) {
 async function setSyncDir(which, handle) {
   syncDirs[which] = handle;
   syncInvalidate();
-  const cap = which === 'ref' ? 'Ref' : 'Target';
+  const cap = which === 'a' ? 'A' : 'B';
   document.getElementById('sBox' + cap).classList.add('set');
   document.getElementById('sName' + cap).textContent = handle.name;
   document.getElementById('sMeta' + cap).textContent = '세는 중...';
@@ -2005,29 +2032,47 @@ async function setSyncDir(which, handle) {
 }
 
 async function compareSync() {
-  if (!syncDirs.ref || !syncDirs.target) { sSetStatus('폴더1과 폴더2를 모두 선택해 주세요.', 'info'); return; }
+  if (!syncDirs.a || !syncDirs.b) { sSetStatus('폴더를 두 개 모두 선택해 주세요.', 'info'); return; }
   syncInvalidate();
   try {
-    if (await syncDirs.ref.isSameEntry(syncDirs.target)) {
-      sSetStatus('폴더1과 폴더2가 같은 폴더입니다. 다른 폴더를 선택해 주세요.', 'err'); return;
+    if (await syncDirs.a.isSameEntry(syncDirs.b)) {
+      sSetStatus('두 칸에 같은 폴더가 들어 있습니다. 다른 폴더를 선택해 주세요.', 'err'); return;
     }
   } catch (e) {}
   sSetStatus('비교하는 중...', 'loading');
-  let refFiles, targetFiles;
+  let filesA, filesB;
   try {
-    refFiles = await listMedia(syncDirs.ref);
-    targetFiles = await listMedia(syncDirs.target);
+    filesA = await listMedia(syncDirs.a);
+    filesB = await listMedia(syncDirs.b);
   } catch (e) {
     sSetStatus('폴더를 읽지 못했습니다: ' + fsErrorText(e), 'err'); return;
   }
-  if (refFiles.length === 0) {
-    // 기준이 비어 있으면 폴더2를 통째로 지우게 되므로 막는다
-    sSetStatus('폴더1에 미디어 파일이 없습니다. 이대로면 폴더2의 파일을 전부 지우게 되므로 진행하지 않습니다.', 'err'); return;
+  document.getElementById('sMetaA').textContent = `미디어 파일 ${filesA.length}개`;
+  document.getElementById('sMetaB').textContent = `미디어 파일 ${filesB.length}개`;
+
+  // 파일이 적은 쪽이 최종(기준), 많은 쪽이 원본(정리 대상)
+  if (filesA.length === filesB.length) {
+    const ka = new Set(filesA.map(f => f.key)), same = filesB.every(f => ka.has(f.key));
+    sSetStatus(same
+      ? `지울 파일이 없습니다. 두 폴더의 미디어 ${filesA.length}개가 서로 같습니다.`
+      : `두 폴더의 미디어 파일 수가 ${filesA.length}개로 같아 어느 쪽이 최종인지 정할 수 없습니다. 진행하지 않습니다.`,
+      same ? 'ok' : 'err');
+    return;
   }
+  syncRole = filesA.length < filesB.length ? { ref: 'a', target: 'b' } : { ref: 'b', target: 'a' };
+  const refFiles = syncRole.ref === 'a' ? filesA : filesB;
+  const targetFiles = syncRole.ref === 'a' ? filesB : filesA;
+  const refName = syncDirs[syncRole.ref].name, targetName = syncDirs[syncRole.target].name;
+  if (refFiles.length === 0) {
+    // 기준이 비어 있으면 원본을 통째로 지우게 되므로 막는다
+    syncRole = null;
+    sSetStatus(`"${refName}"에 미디어 파일이 없습니다. 이대로면 "${targetName}"의 파일을 전부 지우게 되므로 진행하지 않습니다.`, 'err'); return;
+  }
+  showSyncRoles();
   const keep = new Set(refFiles.map(f => f.key));
   const toDelete = targetFiles.filter(f => !keep.has(f.key)).map(f => f.name);
   if (toDelete.length === 0) {
-    sSetStatus(`지울 파일이 없습니다. 폴더2의 미디어 ${targetFiles.length}개가 모두 폴더1에 있습니다.`, 'ok');
+    sSetStatus(`지울 파일이 없습니다. 원본 "${targetName}"의 미디어 ${targetFiles.length}개가 모두 최종 "${refName}"에 있습니다.`, 'ok');
     return;
   }
   document.getElementById('sList').innerHTML = toDelete.map((n, i) =>
@@ -2037,17 +2082,19 @@ async function compareSync() {
   syncPlan = toDelete;
   setupSyncThumbs(toDelete);
   document.getElementById('sDeleteBtn').disabled = false;
-  sSetStatus(`폴더2의 미디어 ${targetFiles.length}개 중 ${toDelete.length}개가 폴더1에 없습니다. 목록을 확인한 뒤 "폴더2에서 삭제"를 누르세요.`, 'info');
+  document.getElementById('sDeleteLabel').textContent = `"${targetName}"에서 삭제`;
+  sSetStatus(`원본 "${targetName}"의 미디어 ${targetFiles.length}개 중 ${toDelete.length}개가 최종 "${refName}"에 없습니다. 목록을 확인한 뒤 삭제 버튼을 누르세요.`, 'info');
 }
 
 async function runSyncDelete() {
-  if (!syncPlan || !syncPlan.length || !syncDirs.target) { sSetStatus('먼저 비교하기를 눌러 주세요.', 'info'); return; }
-  const target = syncDirs.target, plan = syncPlan;
+  const target = syncTargetDir();
+  if (!syncPlan || !syncPlan.length || !target) { sSetStatus('먼저 비교하기를 눌러 주세요.', 'info'); return; }
+  const plan = syncPlan;
   // 권한은 클릭 직후에만 요청할 수 있으므로 confirm보다 먼저
   try {
     let perm = await target.queryPermission({ mode: 'readwrite' });
     if (perm !== 'granted') perm = await target.requestPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') { sSetStatus('폴더2에 쓰기 권한이 필요합니다.', 'err'); return; }
+    if (perm !== 'granted') { sSetStatus(`"${target.name}" 폴더에 쓰기 권한이 필요합니다.`, 'err'); return; }
   } catch (e) { sSetStatus('권한 확인 실패: ' + fsErrorText(e), 'err'); return; }
   if (!confirm(`"${target.name}" 폴더에서 파일 ${plan.length}개를 지웁니다.\n휴지통을 거치지 않고 바로 삭제되며 되돌릴 수 없습니다.\n계속할까요?`)) return;
 
@@ -2067,7 +2114,7 @@ async function runSyncDelete() {
   }
   syncPlan = null;
   document.getElementById('sCompareBtn').disabled = false;
-  document.getElementById('sMetaTarget').textContent = '다시 비교하면 갱신됩니다';
+  document.getElementById(syncRole.target === 'a' ? 'sMetaA' : 'sMetaB').textContent = '다시 비교하면 갱신됩니다';
   sSetStatus(`완료: ${ok}개 삭제` + (fail ? `, ${fail}개 실패` : ''), fail ? 'err' : 'ok');
 }
 // ── 썸네일·미리보기 ────────────────────────────────────────────────
@@ -2109,7 +2156,7 @@ function clearSyncThumbs() {
 }
 
 async function getSyncFile(t) {
-  if (!t.file) t.file = await (await syncDirs.target.getFileHandle(t.name)).getFile();
+  if (!t.file) t.file = await (await syncTargetDir().getFileHandle(t.name)).getFile();
   return t.file;
 }
 

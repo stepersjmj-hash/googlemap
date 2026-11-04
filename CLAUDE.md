@@ -39,14 +39,16 @@ wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code →
 
 - 탭 3개: `#tab-extractor` / `#tab-writer` / `#tab-sync`. `TABS` 테이블을 `switchTab()`이 돌며 전환하므로
   탭을 더 붙일 때는 `<main id="tab-이름">` + `#tabBtn이름` 버튼 + `TABS` 항목 하나면 된다.
-- **폴더 동기화**(`#tab-sync`): `showDirectoryPicker`로 폴더1(`read`)·폴더2(`readwrite`) 핸들을 `syncDirs`에 들고,
-  `listMedia()` → `syncKey()`(미디어 확장자만, 옵션에 따라 확장자·`_gps` 접미사 제거, 소문자)로 키를 만들어
-  `compareSync()`가 폴더2에만 있는 이름을 `syncPlan`에 둔다. `runSyncDelete()`는 그 목록만 `removeEntry()`.
-  옵션·폴더가 바뀌면 `syncInvalidate()`로 `syncPlan`을 버려 옛 목록으로 지우는 일을 막는다.
-  기준 폴더가 비었거나 두 폴더가 같으면(`isSameEntry`) 진행하지 않는다. 하위 폴더는 안 본다.
+- **폴더 동기화**(`#tab-sync`): 폴더 A·B 핸들을 `syncDirs.a/.b`에 들고(둘 다 `read`로 선택), `compareSync()`가
+  `listMedia()` → `syncKey()`(미디어 확장자만, 옵션에 따라 확장자·`_gps` 접미사 제거, 소문자)로 키를 만든 뒤
+  **미디어 파일 수가 적은 쪽을 최종(ref), 많은 쪽을 원본(target)**으로 `syncRole`에 정하고 원본에만 있는 이름을
+  `syncPlan`에 둔다. `syncTargetDir()`가 현재 원본 핸들. `runSyncDelete()`는 그 목록만 `removeEntry()`.
+  옵션·폴더가 바뀌면 `syncInvalidate()`로 `syncPlan`·`syncRole`·역할 배지를 버려 옛 목록으로 지우는 일을 막는다.
+  기준 폴더가 비었거나, 두 폴더가 같거나(`isSameEntry`), 파일 수가 같아 역할을 못 정하면 진행하지 않는다
+  (수도 내용도 같으면 "지울 것 없음"). 하위 폴더는 안 본다.
   폴더 칸은 클릭(`pickSyncDir`)과 탐색기 드롭(`dropSyncDir` → `DataTransferItem.getAsFileSystemHandle()`,
-  드롭 직후 동기적으로 불러야 함) 두 경로가 `setSyncDir()`로 합류한다. 드롭된 핸들은 읽기 권한만 있으므로
-  폴더2의 쓰기 권한은 `runSyncDelete()`가 삭제 클릭 때 요청한다.
+  드롭 직후 동기적으로 불러야 함) 두 경로가 `setSyncDir()`로 합류한다. 역할이 비교 뒤에야 정해지므로
+  쓰기 권한은 `runSyncDelete()`가 삭제 클릭 때 원본 쪽에만 요청한다.
   삭제 예정 목록은 `setupSyncThumbs()`가 항목별 `syncThumbs` 상태를 만들고, 앞 12개는 바로·나머지는
   IntersectionObserver(root는 뷰포트 — `#sList`를 root로 주면 안 잡히는 환경이 있었다)로 썸네일을 만든다.
   이미지는 파일 그대로, RAW는 `extractEmbeddedJpeg()`(앞 8MB에서 FF D8 FF 후보를 디코딩해 가장 큰 것),
@@ -122,6 +124,9 @@ wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code →
 - **파일 접근 오류를 `AbortError`와 뭉뚱그려 삼키지 말 것.** 한때 `NotAllowedError`(권한 거부)까지
   조용히 return 해서 "버튼을 눌러도 아무 반응이 없다"는 증상이 났다. 오류는 `fsErrorText()`로
   풀어서 보여준다.
+- **전역 `button:active { transform: scale(0.97) }` 규칙이 있다.** 버튼을 `transform`으로 배치하면(예: `translateY(-50%)`
+  세로 중앙 정렬) 누르는 순간 그 transform이 덮여 버튼이 튄다. 버튼 위치는 `top: calc(50% - 높이/2)`처럼
+  transform 없이 잡을 것 — 라이트박스 ‹ › 버튼이 이 때문에 33px씩 내려갔었다.
 - **상태 메시지는 누른 버튼 근처에 띄울 것.** 입력기 탭은 세로로 길어서, 아래 사진 카드의
   `#wStatus`에만 쓰면 화면 밖이라 안 보인다. 자주 쓰는 좌표 카드는 `pSetStatus()`(`#presetStatus`)를 쓴다.
 - 노트는 네트워크 드라이브(UNC)에 있어 파일 선택 창 왼쪽 목록에 안 뜬다. 파일 이름 칸에
