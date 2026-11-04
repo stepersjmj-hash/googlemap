@@ -44,6 +44,14 @@ wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code →
   `compareSync()`가 폴더2에만 있는 이름을 `syncPlan`에 둔다. `runSyncDelete()`는 그 목록만 `removeEntry()`.
   옵션·폴더가 바뀌면 `syncInvalidate()`로 `syncPlan`을 버려 옛 목록으로 지우는 일을 막는다.
   기준 폴더가 비었거나 두 폴더가 같으면(`isSameEntry`) 진행하지 않는다. 하위 폴더는 안 본다.
+  폴더 칸은 클릭(`pickSyncDir`)과 탐색기 드롭(`dropSyncDir` → `DataTransferItem.getAsFileSystemHandle()`,
+  드롭 직후 동기적으로 불러야 함) 두 경로가 `setSyncDir()`로 합류한다. 드롭된 핸들은 읽기 권한만 있으므로
+  폴더2의 쓰기 권한은 `runSyncDelete()`가 삭제 클릭 때 요청한다.
+  삭제 예정 목록은 `setupSyncThumbs()`가 항목별 `syncThumbs` 상태를 만들고, 앞 12개는 바로·나머지는
+  IntersectionObserver(root는 뷰포트 — `#sList`를 root로 주면 안 잡히는 환경이 있었다)로 썸네일을 만든다.
+  이미지는 파일 그대로, RAW는 `extractEmbeddedJpeg()`(앞 8MB에서 FF D8 FF 후보를 디코딩해 가장 큰 것),
+  동영상은 `videoFrameBlob()`(첫 장면 캔버스). 클릭하면 `openSyncPreview()` 라이트박스. Esc로 닫힘.
+  object URL은 `clearSyncThumbs()`·`closeSyncPreview()`에서 해제한다.
 - **추출 순서**: 직접 좌표 파싱 → Plus Code 디코딩 → Worker로 단축 URL 펼치기.
   앞의 두 단계는 `tryExtractAll()` 하나로 묶여 있고, 원본 입력과 Worker가 펼친 URL 양쪽에 같은 함수를 적용한다.
 - OLC(Plus Code)는 외부 라이브러리 없이 자체 구현. 단축 코드는 URL 속 도시명(`CITIES` 테이블)을 기준점으로 복원.

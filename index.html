@@ -340,6 +340,29 @@ button:active { transform: scale(0.97); }
 }
 .folder-box:hover { border-color: var(--accent); }
 .folder-box.set { border-style: solid; border-color: var(--accent); }
+.folder-box.drag { border-style: solid; border-color: var(--accent); background: var(--accent-glow); }
+/* 삭제 예정 목록: 썸네일 + 클릭 미리보기 */
+.sync-item { align-items: center; cursor: pointer; padding: 4px 6px; }
+.sync-item:hover { background: var(--surface2); }
+.sync-item .sname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.sync-item.gone { cursor: default; opacity: 0.55; }
+.sync-item.gone:hover { background: none; }
+.thumb {
+  width: 48px; height: 48px; flex: 0 0 48px; border-radius: 6px; overflow: hidden;
+  background: var(--surface2); display: flex; align-items: center; justify-content: center;
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-ext { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; }
+.lightbox {
+  position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.88); padding: 20px; cursor: zoom-out;
+}
+.lightbox.show { display: flex; }
+.lb-body { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 96vw; cursor: default; }
+.lb-media img, .lb-media video { max-width: 96vw; max-height: 84vh; border-radius: 8px; display: block; background: #000; }
+.lb-media .lb-none { color: var(--muted); font-size: 14px; padding: 40px 20px; }
+.lb-cap { color: var(--text); font-family: var(--mono); font-size: 13px; text-align: center; word-break: break-all; }
+.lb-cap small { color: var(--muted); display: block; margin-top: 2px; font-family: var(--sans); }
 .folder-box .fb-role { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .folder-box .fb-name { font-size: 14px; font-weight: 600; margin-top: 4px; word-break: break-all; }
 .folder-box .fb-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -717,14 +740,16 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
   <div class="card">
     <div class="field-label">폴더 선택 <span style="text-transform:none;font-weight:400">(Chrome·Edge · 하위 폴더는 보지 않습니다)</span></div>
     <div class="folder-grid">
-      <div class="folder-box" id="sBoxRef" onclick="pickSyncDir('ref')">
+      <div class="folder-box" id="sBoxRef" onclick="pickSyncDir('ref')"
+           ondragover="syncDragOver(event,'ref')" ondragleave="syncDragLeave('ref')" ondrop="dropSyncDir(event,'ref')">
         <div class="fb-role">폴더1 · 최종 (기준)</div>
-        <div class="fb-name" id="sNameRef">클릭해서 선택</div>
+        <div class="fb-name" id="sNameRef">클릭 선택 · 탐색기에서 끌어다 놓기</div>
         <div class="fb-meta" id="sMetaRef">여기 있는 파일은 남깁니다</div>
       </div>
-      <div class="folder-box" id="sBoxTarget" onclick="pickSyncDir('target')">
+      <div class="folder-box" id="sBoxTarget" onclick="pickSyncDir('target')"
+           ondragover="syncDragOver(event,'target')" ondragleave="syncDragLeave('target')" ondrop="dropSyncDir(event,'target')">
         <div class="fb-role">폴더2 · 변경 (정리 대상)</div>
-        <div class="fb-name" id="sNameTarget">클릭해서 선택</div>
+        <div class="fb-name" id="sNameTarget">클릭 선택 · 탐색기에서 끌어다 놓기</div>
         <div class="fb-meta" id="sMetaTarget">폴더1에 없는 파일을 여기서 지웁니다</div>
       </div>
     </div>
@@ -742,6 +767,7 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
     </div>
     <div class="status" id="sStatus"></div>
     <div class="filelist" id="sList"></div>
+    <div class="guide-item" style="margin-top:6px"><span class="guide-desc" style="font-size:11.5px">목록의 항목을 클릭하면 크게 볼 수 있습니다. RAW는 파일 안의 미리보기 JPEG을, 동영상은 첫 장면을 보여줍니다.</span></div>
   </div>
 
   <!-- 안내 -->
@@ -763,6 +789,12 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
 </main>
 
 <div id="toast"></div>
+<div class="lightbox" id="sLightbox" onclick="closeSyncPreview()">
+  <div class="lb-body" onclick="event.stopPropagation()">
+    <div class="lb-media" id="sLbMedia"></div>
+    <div class="lb-cap" id="sLbCap"></div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -1871,6 +1903,7 @@ function sSetStatus(msg, type) {
 // 옵션이나 폴더가 바뀌면 이전 비교 결과는 버린다 (옛 목록으로 삭제하는 걸 막기 위해)
 function syncInvalidate() {
   syncPlan = null;
+  clearSyncThumbs();
   document.getElementById('sDeleteBtn').disabled = true;
   document.getElementById('sList').innerHTML = '';
 }
@@ -1913,6 +1946,36 @@ async function pickSyncDir(which) {
     sSetStatus('폴더를 열지 못했습니다: ' + fsErrorText(e), 'err');
     return;
   }
+  await setSyncDir(which, handle);
+}
+
+// 탐색기에서 폴더를 끌어다 놓기. 드롭된 핸들은 읽기 권한만 딸려 오고,
+// 폴더2의 쓰기 권한은 삭제 버튼을 누를 때 runSyncDelete()가 따로 요청한다.
+function syncDragOver(ev, which) {
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = 'link';
+  document.getElementById(which === 'ref' ? 'sBoxRef' : 'sBoxTarget').classList.add('drag');
+}
+function syncDragLeave(which) {
+  document.getElementById(which === 'ref' ? 'sBoxRef' : 'sBoxTarget').classList.remove('drag');
+}
+async function dropSyncDir(ev, which) {
+  ev.preventDefault();
+  syncDragLeave(which);
+  const item = [...(ev.dataTransfer.items || [])].find(it => it.kind === 'file');
+  if (!item) { sSetStatus('폴더를 끌어다 놓아 주세요.', 'info'); return; }
+  if (!item.getAsFileSystemHandle) {
+    sSetStatus('이 브라우저는 폴더 끌어다 놓기를 지원하지 않습니다 (Chrome·Edge 필요). 칸을 클릭해서 선택해 주세요.', 'err');
+    return;
+  }
+  let handle;
+  try { handle = await item.getAsFileSystemHandle(); }   // 드롭 직후 동기적으로 불러야 한다
+  catch (e) { sSetStatus('폴더를 열지 못했습니다: ' + fsErrorText(e), 'err'); return; }
+  if (!handle || handle.kind !== 'directory') { sSetStatus('파일이 아니라 폴더를 끌어다 놓아 주세요.', 'err'); return; }
+  await setSyncDir(which, handle);
+}
+
+async function setSyncDir(which, handle) {
   syncDirs[which] = handle;
   syncInvalidate();
   const cap = which === 'ref' ? 'Ref' : 'Target';
@@ -1955,8 +2018,11 @@ async function compareSync() {
     return;
   }
   document.getElementById('sList').innerHTML = toDelete.map((n, i) =>
-    `<div class="fitem"><span>${escapeHtml(n)}</span><span class="fstat" id="sfstat${i}">삭제 예정</span></div>`).join('');
+    `<div class="fitem sync-item" id="sitem${i}" onclick="openSyncPreview(${i})" title="클릭하면 크게 보기">` +
+    `<div class="thumb" id="sthumb${i}" data-i="${i}"><span class="thumb-ext">${escapeHtml(extOf(n).toUpperCase())}</span></div>` +
+    `<span class="sname">${escapeHtml(n)}</span><span class="fstat" id="sfstat${i}">삭제 예정</span></div>`).join('');
   syncPlan = toDelete;
+  setupSyncThumbs(toDelete);
   document.getElementById('sDeleteBtn').disabled = false;
   sSetStatus(`폴더2의 미디어 ${targetFiles.length}개 중 ${toDelete.length}개가 폴더1에 없습니다. 목록을 확인한 뒤 "폴더2에서 삭제"를 누르세요.`, 'info');
 }
@@ -1980,6 +2046,8 @@ async function runSyncDelete() {
     try {
       await target.removeEntry(plan[i]);
       ok++; setSfstat(i, '삭제됨', 'done');
+      const t = syncThumbs.get(i); if (t) t.gone = true;
+      const row = document.getElementById('sitem' + i); if (row) row.classList.add('gone');
     } catch (e) {
       fail++; setSfstat(i, '실패: ' + fsErrorText(e), 'fail');
     }
@@ -1989,6 +2057,163 @@ async function runSyncDelete() {
   document.getElementById('sMetaTarget').textContent = '다시 비교하면 갱신됩니다';
   sSetStatus(`완료: ${ok}개 삭제` + (fail ? `, ${fail}개 실패` : ''), fail ? 'err' : 'ok');
 }
+// ── 썸네일·미리보기 ────────────────────────────────────────────────
+// 브라우저가 바로 그리는 이미지는 파일 그대로, RAW는 파일 안에 박힌 미리보기 JPEG을 찾아 쓰고,
+// 동영상은 첫 장면을 캔버스로 뜬다. 썸네일은 화면에 보이는 항목만 만든다(IntersectionObserver).
+const IMG_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','avif']);
+const VIDEO_EXT = new Set(['mp4','mov','m4v','webm','mkv','avi','mts','m2ts','wmv','3gp','mpg','mpeg']);
+const THUMB_PX = 96;
+const syncThumbs = new Map();   // i → { name, kind, state, file, preview(Blob), url, gone }
+let thumbObserver = null;
+
+function extOf(name) { const d = name.lastIndexOf('.'); return d > 0 ? name.slice(d + 1) : ''; }
+function mediaKind(name) {
+  const ext = extOf(name).toLowerCase();
+  if (IMG_EXT.has(ext)) return 'image';
+  if (VIDEO_EXT.has(ext)) return 'video';
+  return 'raw';   // RAW·HEIC·TIFF 등: 박힌 JPEG 찾기 시도
+}
+
+function setupSyncThumbs(names) {
+  clearSyncThumbs();
+  names.forEach((name, i) => syncThumbs.set(i, { name, kind: mediaKind(name), state: 'idle', file: null, preview: null, url: null, gone: false }));
+  // 맨 위 몇 개는 바로, 나머지는 화면에 들어올 때
+  names.slice(0, 12).forEach((_, i) => loadSyncThumb(i));
+  if (!('IntersectionObserver' in window)) { names.forEach((_, i) => loadSyncThumb(i)); return; }
+  thumbObserver = new IntersectionObserver(entries => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      thumbObserver.unobserve(en.target);
+      loadSyncThumb(+en.target.dataset.i);
+    }
+  }, { rootMargin: '200px' });
+  document.querySelectorAll('#sList .thumb').forEach(el => thumbObserver.observe(el));
+}
+function clearSyncThumbs() {
+  if (thumbObserver) { thumbObserver.disconnect(); thumbObserver = null; }
+  for (const t of syncThumbs.values()) if (t.url) URL.revokeObjectURL(t.url);
+  syncThumbs.clear();
+}
+
+async function getSyncFile(t) {
+  if (!t.file) t.file = await (await syncDirs.target.getFileHandle(t.name)).getFile();
+  return t.file;
+}
+
+// 썸네일에 쓸 원본 Blob (이미지 자체 / RAW 속 JPEG / 동영상 첫 장면)
+async function thumbSource(t) {
+  const file = await getSyncFile(t);
+  if (t.kind === 'image') return file;
+  if (t.kind === 'raw') { if (!t.preview) t.preview = await extractEmbeddedJpeg(file); return t.preview; }
+  if (t.kind === 'video') return await videoFrameBlob(file);
+  return null;
+}
+
+async function loadSyncThumb(i) {
+  const t = syncThumbs.get(i);
+  if (!t || t.state !== 'idle') return;
+  t.state = 'loading';
+  try {
+    const src = await thumbSource(t);
+    if (src) {
+      t.url = await makeThumbUrl(src);
+      const el = document.getElementById('sthumb' + i);
+      if (el) el.innerHTML = `<img src="${t.url}" alt="">`;
+    }
+    t.state = 'done';
+  } catch (e) { t.state = 'fail'; }
+}
+
+// Blob → 정사각형 썸네일(가운데 자르기) → object URL
+async function makeThumbUrl(blob) {
+  const bmp = await createImageBitmap(blob);
+  const side = Math.min(bmp.width, bmp.height);
+  const c = document.createElement('canvas');
+  c.width = THUMB_PX; c.height = THUMB_PX;
+  c.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, THUMB_PX, THUMB_PX);
+  bmp.close();
+  const out = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.8));
+  return URL.createObjectURL(out);
+}
+
+// RAW(ARW·CR2·NEF·DNG…) 앞부분에서 JPEG 시그니처(FF D8 FF)를 찾아 디코딩되는 가장 큰 것을 고른다.
+// 카메라 RAW는 대개 파일 앞쪽 IFD에 미리보기 JPEG을 두므로 앞 8MB만 읽는다.
+async function extractEmbeddedJpeg(file) {
+  const buf = new Uint8Array(await file.slice(0, 8 * 1024 * 1024).arrayBuffer());
+  const starts = [];
+  for (let i = 0; i + 2 < buf.length && starts.length < 8; i++) {
+    if (buf[i] === 0xFF && buf[i + 1] === 0xD8 && buf[i + 2] === 0xFF) starts.push(i);
+  }
+  let best = null;
+  for (const st of starts) {
+    const blob = new Blob([buf.subarray(st)], { type: 'image/jpeg' });   // 뒤에 딴 데이터가 붙어 있어도 디코더가 EOI에서 멈춘다
+    try {
+      const bmp = await createImageBitmap(blob);
+      if (!best || bmp.width > best.w) best = { w: bmp.width, blob };
+      bmp.close();
+    } catch (e) {}
+    if (best && best.w >= 1000) break;   // 충분히 큰 미리보기면 더 안 본다
+  }
+  return best ? best.blob : null;
+}
+
+// 동영상 첫 장면을 캔버스로 떠서 JPEG Blob으로
+function videoFrameBlob(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'metadata'; v.src = url;
+    let finished = false;
+    const done = b => { if (finished) return; finished = true; clearTimeout(timer); URL.revokeObjectURL(url); v.removeAttribute('src'); v.load(); resolve(b); };
+    const timer = setTimeout(() => done(null), 8000);
+    v.onerror = () => done(null);
+    v.onloadedmetadata = () => { try { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); } catch (e) { done(null); } };
+    v.onseeked = () => {
+      try {
+        const s = THUMB_PX * 2 / Math.max(v.videoWidth, v.videoHeight, 1);
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(v.videoWidth * s)); c.height = Math.max(1, Math.round(v.videoHeight * s));
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        c.toBlob(b => done(b), 'image/jpeg', 0.8);
+      } catch (e) { done(null); }
+    };
+  });
+}
+
+// 목록 항목 클릭 → 크게 보기
+let lbUrl = null;
+async function openSyncPreview(i) {
+  const t = syncThumbs.get(i);
+  if (!t) return;
+  if (t.gone) { showToast('이미 삭제된 파일입니다'); return; }
+  const media = document.getElementById('sLbMedia'), cap = document.getElementById('sLbCap');
+  media.innerHTML = '<div class="lb-none">불러오는 중...</div>';
+  cap.innerHTML = escapeHtml(t.name);
+  document.getElementById('sLightbox').classList.add('show');
+  try {
+    const file = await getSyncFile(t);
+    let src = null, note = '';
+    if (t.kind === 'image') src = file;
+    else if (t.kind === 'video') src = file;
+    else { if (!t.preview) t.preview = await extractEmbeddedJpeg(file); src = t.preview; note = src ? '파일 안의 미리보기 JPEG' : ''; }
+    if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; }
+    if (!src) { media.innerHTML = '<div class="lb-none">이 형식은 미리보기를 만들 수 없습니다.</div>'; return; }
+    lbUrl = URL.createObjectURL(src);
+    media.innerHTML = t.kind === 'video'
+      ? `<video src="${lbUrl}" controls autoplay muted playsinline></video>`
+      : `<img src="${lbUrl}" alt="">`;
+    cap.innerHTML = escapeHtml(t.name) + `<small>${escapeHtml(note || (file.size / 1048576).toFixed(1) + ' MB')}</small>`;
+  } catch (e) {
+    media.innerHTML = `<div class="lb-none">열지 못했습니다: ${escapeHtml(fsErrorText(e))}</div>`;
+  }
+}
+function closeSyncPreview() {
+  document.getElementById('sLightbox').classList.remove('show');
+  document.getElementById('sLbMedia').innerHTML = '';
+  if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSyncPreview(); });
+
 function setSfstat(i, txt, cls) {
   const el = document.getElementById('sfstat' + i);
   if (el) { el.textContent = txt; el.title = txt; el.className = 'fstat ' + (cls || ''); }
