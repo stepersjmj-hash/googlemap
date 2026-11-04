@@ -363,6 +363,17 @@ button:active { transform: scale(0.97); }
 .lb-media .lb-none { color: var(--muted); font-size: 14px; padding: 40px 20px; }
 .lb-cap { color: var(--text); font-family: var(--mono); font-size: 13px; text-align: center; word-break: break-all; }
 .lb-cap small { color: var(--muted); display: block; margin-top: 2px; font-family: var(--sans); }
+.lb-media img { cursor: zoom-out; }
+.lb-nav {
+  position: fixed; top: 50%; transform: translateY(-50%); z-index: 1001;
+  width: 44px; height: 64px; border: none; border-radius: 8px; cursor: pointer;
+  background: rgba(255,255,255,0.12); color: #fff; font-size: 28px; line-height: 1;
+  display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+}
+.lb-nav:hover { background: rgba(255,255,255,0.28); }
+.lb-nav.prev { left: 12px; }
+.lb-nav.next { right: 12px; }
+@media (max-width: 560px) { .lb-nav { width: 36px; height: 52px; font-size: 22px; } }
 .folder-box .fb-role { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .folder-box .fb-name { font-size: 14px; font-weight: 600; margin-top: 4px; word-break: break-all; }
 .folder-box .fb-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
@@ -790,10 +801,12 @@ https://maps.google.com/.../@37.5665,126.9780,14z"></textarea>
 
 <div id="toast"></div>
 <div class="lightbox" id="sLightbox" onclick="closeSyncPreview()">
-  <div class="lb-body" onclick="event.stopPropagation()">
+  <button class="lb-nav prev" title="이전 (←)" onclick="event.stopPropagation();syncPreviewStep(-1)">‹</button>
+  <div class="lb-body">
     <div class="lb-media" id="sLbMedia"></div>
     <div class="lb-cap" id="sLbCap"></div>
   </div>
+  <button class="lb-nav next" title="다음 (→)" onclick="event.stopPropagation();syncPreviewStep(1)">›</button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/piexifjs@1.0.6/piexif.js"></script>
@@ -2181,14 +2194,17 @@ function videoFrameBlob(file) {
 }
 
 // 목록 항목 클릭 → 크게 보기
-let lbUrl = null;
+let lbUrl = null, lbIndex = -1, lbSeq = 0;
 async function openSyncPreview(i) {
   const t = syncThumbs.get(i);
   if (!t) return;
   if (t.gone) { showToast('이미 삭제된 파일입니다'); return; }
+  const seq = ++lbSeq;   // 화살표 연타 중 늦게 끝난 옛 요청이 화면을 덮지 않도록
+  lbIndex = i;
   const media = document.getElementById('sLbMedia'), cap = document.getElementById('sLbCap');
+  const pos = `<small>${i + 1} / ${syncThumbs.size}</small>`;
   media.innerHTML = '<div class="lb-none">불러오는 중...</div>';
-  cap.innerHTML = escapeHtml(t.name);
+  cap.innerHTML = escapeHtml(t.name) + pos;
   document.getElementById('sLightbox').classList.add('show');
   try {
     const file = await getSyncFile(t);
@@ -2196,23 +2212,44 @@ async function openSyncPreview(i) {
     if (t.kind === 'image') src = file;
     else if (t.kind === 'video') src = file;
     else { if (!t.preview) t.preview = await extractEmbeddedJpeg(file); src = t.preview; note = src ? '파일 안의 미리보기 JPEG' : ''; }
+    if (seq !== lbSeq) return;
     if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; }
     if (!src) { media.innerHTML = '<div class="lb-none">이 형식은 미리보기를 만들 수 없습니다.</div>'; return; }
     lbUrl = URL.createObjectURL(src);
+    // 이미지는 클릭하면 닫히고(배경과 동일), 동영상은 컨트롤을 눌러야 하므로 전파를 막는다
     media.innerHTML = t.kind === 'video'
-      ? `<video src="${lbUrl}" controls autoplay muted playsinline></video>`
+      ? `<video src="${lbUrl}" controls autoplay muted playsinline onclick="event.stopPropagation()"></video>`
       : `<img src="${lbUrl}" alt="">`;
-    cap.innerHTML = escapeHtml(t.name) + `<small>${escapeHtml(note || (file.size / 1048576).toFixed(1) + ' MB')}</small>`;
+    cap.innerHTML = escapeHtml(t.name) + `<small>${escapeHtml(note || (file.size / 1048576).toFixed(1) + ' MB')} · ${i + 1} / ${syncThumbs.size}</small>`;
   } catch (e) {
+    if (seq !== lbSeq) return;
     media.innerHTML = `<div class="lb-none">열지 못했습니다: ${escapeHtml(fsErrorText(e))}</div>`;
   }
 }
+// 이전(-1)·다음(+1). 끝에서는 반대쪽 끝으로 돌고, 이미 지운 항목은 건너뛴다.
+function syncPreviewStep(dir) {
+  const n = syncThumbs.size;
+  if (!n || lbIndex < 0) return;
+  let i = lbIndex;
+  for (let k = 0; k < n; k++) {
+    i = (i + dir + n) % n;
+    const t = syncThumbs.get(i);
+    if (t && !t.gone) { if (i !== lbIndex) openSyncPreview(i); return; }
+  }
+  closeSyncPreview();   // 남은 항목이 없다
+}
 function closeSyncPreview() {
+  lbSeq++; lbIndex = -1;
   document.getElementById('sLightbox').classList.remove('show');
   document.getElementById('sLbMedia').innerHTML = '';
   if (lbUrl) { URL.revokeObjectURL(lbUrl); lbUrl = null; }
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSyncPreview(); });
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('sLightbox').classList.contains('show')) return;
+  if (e.key === 'Escape') closeSyncPreview();
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); syncPreviewStep(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); syncPreviewStep(1); }
+});
 
 function setSfstat(i, txt, cls) {
   const el = document.getElementById('sfstat' + i);

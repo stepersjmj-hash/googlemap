@@ -51,6 +51,9 @@ wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code →
   IntersectionObserver(root는 뷰포트 — `#sList`를 root로 주면 안 잡히는 환경이 있었다)로 썸네일을 만든다.
   이미지는 파일 그대로, RAW는 `extractEmbeddedJpeg()`(앞 8MB에서 FF D8 FF 후보를 디코딩해 가장 큰 것),
   동영상은 `videoFrameBlob()`(첫 장면 캔버스). 클릭하면 `openSyncPreview()` 라이트박스. Esc로 닫힘.
+  라이트박스는 `lbIndex`로 현재 위치를 들고 `syncPreviewStep(±1)`이 ←/→ 키·양옆 버튼으로 순환 이동
+  (지운 항목은 건너뛰고, 남은 게 없으면 닫음). 연타 시 `lbSeq`로 늦게 끝난 옛 요청을 버린다.
+  이미지·배경 클릭은 닫기, 동영상만 `stopPropagation`으로 컨트롤 클릭을 살린다.
   object URL은 `clearSyncThumbs()`·`closeSyncPreview()`에서 해제한다.
 - **추출 순서**: 직접 좌표 파싱 → Plus Code 디코딩 → Worker로 단축 URL 펼치기.
   앞의 두 단계는 `tryExtractAll()` 하나로 묶여 있고, 원본 입력과 Worker가 펼친 URL 양쪽에 같은 함수를 적용한다.
