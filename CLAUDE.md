@@ -61,11 +61,16 @@ wrangler는 전역 설치 없이 npx로 쓴다. 대시보드에서 Edit code →
   앞의 두 단계는 `tryExtractAll()` 하나로 묶여 있고, 원본 입력과 Worker가 펼친 URL 양쪽에 같은 함수를 적용한다.
 - OLC(Plus Code)는 외부 라이브러리 없이 자체 구현. 단축 코드는 URL 속 도시명(`CITIES` 테이블)을 기준점으로 복원.
 - EXIF 쓰기는 piexifjs, ZIP은 JSZip — 둘 다 CDN. 재압축 없이 메타데이터만 삽입해 화질 무손실.
-- 저장은 File System Access API(폴더 직접 저장, Chrome·Edge) / JSZip(폴백) 두 갈래.
-  `_gps` 접미사 옵션은 기본 꺼짐(2026-11) — 같은 폴더를 고르면 원본을 덮어쓰는 흐름이 기본이다.
-- 입력기 드롭존은 파일뿐 아니라 폴더째 드롭도 받는다. `webkitGetAsEntry()`(드롭 직후 동기적으로 모을 것)로
-  바로 아래 파일만 읽고(`readDirEntryFiles`, `readEntries`는 빈 배열까지 반복), 하위 폴더는 안 본다.
-  동기화 탭의 `getAsFileSystemHandle()`과 달리 파일 핸들이 아니라 File 객체만 필요해서 더 넓게 지원되는 쪽을 썼다.
+- 저장은 세 갈래: **원본 위치에 저장**(`processPhotos('inplace')`, 기본) / 다른 폴더에 저장(`'folder'`, 폴더 선택창) /
+  ZIP(`'zip'`, 폴백). `_gps` 접미사 옵션은 기본 꺼짐(2026-11) — 원본을 덮어쓰는 흐름이 기본이다.
+- **원본 위치에 저장**은 선택한 사진의 파일 핸들이 있어야 한다. `wFilesSel`(File[])과 나란히 `wSrcs[i] = {handle, dir}`를
+  들고 있는데, 핸들은 (1) 드롭존에 끌어다 놓았을 때 `DataTransferItem.getAsFileSystemHandle()`(드롭 직후 동기적으로
+  전부 호출), (2) 클릭 선택을 `showOpenFilePicker`로 할 때 생긴다. `<input type=file>` 폴백이나 `webkitGetAsEntry`
+  폴백(핸들 API 없는 브라우저)으로 들어온 사진은 핸들이 없어 원본 저장이 안 되고 안내만 띄운다.
+  폴더째 놓으면 `dir`도 있어 쓰기 권한을 폴더에 한 번만 묻고, 낱장은 파일마다 묻는다(`requestPermission`은 클릭 직후
+  활성화가 살아 있을 때 confirm보다 먼저). 접미사 켠 채 원본 옆에 새 파일을 만들려면 `dir.getFileHandle(create)`가
+  필요해 폴더째 놓은 경우에만 된다. 덮어쓰기는 `handle.createWritable()` → write → close로, 원본은 close 때 통째로 바뀐다
+  (그 전에 `arrayBuffer()`로 다 읽어 두므로 읽는 도중 잘리지 않는다).
 - Worker 주소는 localStorage(`maps_worker_url`)에 저장. 앱에 하드코딩하지 않음.
 
 ## 데이터 소스
